@@ -1,0 +1,28 @@
+{
+  "name": "Intel 调用 GameAddScore(5)",
+  "description": "Intel 语法 mov+call 间接模板，给目标加 5 分并读取得分",
+  "syntax": "intel",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "加 5 分",
+      "mode": "call",
+      "call": "GameAddScore",
+      "args": ["5"],
+      "code": "mov rcx, 5",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "读取得分（用户代码内嵌调用）",
+      "mode": "code",
+      "code": "mov rax, GameGetScore\ncall rax\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "读取血量",
+      "mode": "code",
+      "code": "mov rax, GameGetHealth\ncall rax\nret",
+      "timeout_ms": 3000
+    }
+  ]
+}

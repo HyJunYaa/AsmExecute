@@ -1,0 +1,41 @@
+{
+  "name": "多步顺序综合演示",
+  "description": "伤害→治疗→加分的完整顺序流程，展示方案系统的步骤编排",
+  "syntax": "intel",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "造成 30 点伤害",
+      "mode": "call",
+      "call": "GameDamage",
+      "args": ["30"],
+      "timeout_ms": 3000
+    },
+    {
+      "title": "读取当前血量",
+      "mode": "code",
+      "code": "mov rax, GameGetHealth\ncall rax\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "治疗 100 点",
+      "mode": "call",
+      "call": "GameHeal",
+      "args": ["100"],
+      "timeout_ms": 3000
+    },
+    {
+      "title": "读取位置（指针参数写出）",
+      "mode": "code",
+      "code": "mov rcx, g_pos\nmov rax, GameGetPos\ncall rax\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "GameAddScore +100",
+      "mode": "call",
+      "call": "GameAddScore",
+      "args": ["100"],
+      "timeout_ms": 3000
+    }
+  ]
+}

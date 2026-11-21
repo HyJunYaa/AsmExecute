@@ -1,0 +1,135 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <ProjectGuid>{7E24F9DE-BEEF-4362-8CD7-B827CD8B2337}</ProjectGuid>
+    <ProjectTypeGuids>{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <BaseIntermediateOutputPath>..\obj\$(Configuration)\AsmStudio\</BaseIntermediateOutputPath>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <!-- Debug: 控制台程序（可查看日志）；Release: WinExe 纯窗体 -->
+    <OutputType Condition=" '$(Configuration)' == 'Debug' ">Exe</OutputType>
+    <OutputType Condition=" '$(Configuration)' == 'Release' ">WinExe</OutputType>
+    <RootNamespace>AsmStudio</RootNamespace>
+    <AssemblyName>AsmStudio</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <AllowUnsafeBlocks>False</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Platform)' == 'AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Platform)' == 'x86' ">
+    <PlatformTarget>x86</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Platform)' == 'x64' ">
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <OutputPath>..\bin\$(Configuration)\x64\</OutputPath>
+    <DebugSymbols>True</DebugSymbols>
+    <DebugType>Full</DebugType>
+    <Optimize>False</Optimize>
+    <CheckForOverflowUnderflow>True</CheckForOverflowUnderflow>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>..\bin\$(Configuration)\x64\</OutputPath>
+    <DebugSymbols>False</DebugSymbols>
+    <DebugType>None</DebugType>
+    <Optimize>True</Optimize>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <OutputPath>..\bin\$(Configuration)\x86\</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <OutputPath>..\bin\$(Configuration)\x86\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Core">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Drawing">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Web.Extensions">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Windows.Forms">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Xml">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Xml.Linq">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="MainForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="MainForm.Designer.cs">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SchemePickForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Controls\AsmEditor.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Controls\EditorTheme.cs" />
+    <Compile Include="Engine\AsmSyntax.cs" />
+    <Compile Include="Engine\Lexicon\InstructionLexicon.cs" />
+    <Compile Include="Engine\Lexicon\RegisterLexicon.cs" />
+    <Compile Include="Engine\InstructionTables.cs" />
+    <Compile Include="Engine\Lexer.cs" />
+    <Compile Include="Engine\SyntaxConverter.cs" />
+    <Compile Include="Engine\IntelAssembler.cs" />
+    <Compile Include="Engine\AtAndTAssembler.cs" />
+    <Compile Include="Engine\Encoder.cs" />
+    <Compile Include="Engine\Assembler.cs" />
+    <Compile Include="Engine\AsmEngine.cs" />
+    <Compile Include="Engine\TestVectors.cs" />
+    <Compile Include="Remote\NativeInterop.cs" />
+    <Compile Include="Remote\ExecutionResult.cs" />
+    <Compile Include="Remote\ProcessScanner.cs" />
+    <Compile Include="Remote\PipeClient.cs" />
+    <Compile Include="Remote\RemoteThreadExecutor.cs" />
+    <Compile Include="Remote\AsmVeh.cs" />
+    <Compile Include="Remote\RemoteSymbols.cs" />
+    <Compile Include="Remote\DllInjector.cs" />
+    <Compile Include="Remote\TargetSession.cs" />
+    <Compile Include="Schemes\SchemeFile.cs" />
+    <Compile Include="Schemes\SchemeRunner.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="MainForm.resx">
+      <DependentUpon>MainForm.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Resources\*.asmscheme">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+  <!-- 无 targeting pack 时框架程序集/mscorlib/norm*.nlp 会误复制到输出目录，构建后清理 -->
+  <Target Name="RemoveFrameworkCopies" AfterTargets="Build">
+    <Delete Files="$(OutputPath)mscorlib.dll" />
+    <Delete Files="$(OutputPath)normidna.nlp;$(OutputPath)normnfc.nlp;$(OutputPath)normnfd.nlp;$(OutputPath)normnfkc.nlp;$(OutputPath)normnfkd.nlp" />
+  </Target>
+</Project>

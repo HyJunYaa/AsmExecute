@@ -1,0 +1,32 @@
+{
+  "name": "VEH 防崩溃演示",
+  "description": "故意触发访问违例 → AsmLibrary VEH 捕获异常，目标进程存活不崩溃",
+  "syntax": "intel",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "空指针读（目标函数版本）",
+      "mode": "code",
+      "code": "mov rax, GameCrashNow\ncall rax\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "直接空指针读（汇编码版本）",
+      "mode": "code",
+      "code": "xor rax, rax\nmov rax, [rax]\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "除零（整数除法异常）",
+      "mode": "code",
+      "code": "mov ecx, 0\nmov eax, 1\ndiv ecx\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "目标进程仍然存活（读血量验证）",
+      "mode": "call",
+      "call": "GameGetHealth",
+      "timeout_ms": 3000
+    }
+  ]
+}
