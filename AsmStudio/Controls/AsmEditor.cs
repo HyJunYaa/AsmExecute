@@ -407,10 +407,13 @@ namespace AsmStudio.Controls
                 }
 
                 // 恢复光标/选区/滚动位置
+                // 注意：SelectionStart 的 setter 会保留原选区终点（EM_SETSEL(start, 旧终点)），
+                // 着色刚 SelectAll/选过 token，直接赋值会把"光标→旧终点"整段选中，
+                // 导致下次输入覆盖所选文本 —— 必须用 Select(sel, 0) 显式塌缩为光标。
                 if (selLen > 0)
                     _rtb.Select(sel, selLen);
                 else
-                    _rtb.SelectionStart = sel;
+                    _rtb.Select(sel, 0);
                 SendMessage(_rtb.Handle, EM_SETSCROLLPOS, IntPtr.Zero, ref scroll);
 
                 _lastHighlighted = text;
