@@ -71,7 +71,16 @@ namespace AsmStudio.Remote
                     userCode[userCode.Length - 1] = 0xC3;   // 兜底 ret
                 }
 
-                ulong exitThread = (ulong)GetProcAddress("kernel32.dll", "ExitThread").ToInt64();
+                // ExitThread 必须取目标进程内的地址（读目标 kernel32 导出表，追踪转发到 ntdll）：
+                // 本进程地址在跨位数时毫无意义，同架构直接借用也只是碰巧（ASLR 每次开机全局一致）。
+                ulong exitThread = RemoteSymbols.ResolveTargetApi(target.Pid, target.Is64Bit,
+                    "kernel32.dll", "ExitThread");
+                if (exitThread == 0)
+                {
+                    r.Status = ExecStatus.Internal;
+                    r.Message = "无法从目标进程导出表解析 ExitThread";
+                    return r;
+                }
                 int epilogueOff;
                 byte[] stub = is64
                     ? BuildStubX64(userCode.Length, args, nargs, stubCallTarget, vehData, exitThread, out epilogueOff)
@@ -184,13 +193,6 @@ namespace AsmStudio.Remote
         private static void Put64(byte[] buf, int off, ulong v)
         {
             for (int i = 0; i < 8; i++) buf[off + i] = (byte)((v >> (8 * i)) & 0xFF);
-        }
-
-        private static IntPtr GetProcAddress(string module, string name)
-        {
-            IntPtr m = NativeInterop.GetModuleHandle(module);
-            if (m == IntPtr.Zero) return IntPtr.Zero;
-            return NativeInterop.GetProcAddress(m, name);
         }
 
         /* ---- x64 stub ----

@@ -61,32 +61,24 @@ namespace AsmStudio.Remote
 
             try
             {
-                // 解析目标进程内 kernel32 基址（跨 ASLR），换算 Add/RemoveVectoredExceptionHandler
-                IntPtr localK32 = NativeInterop.GetModuleHandle("kernel32.dll");
-                IntPtr remoteK32 = NativeInterop.GetRemoteModuleBase(pid, "kernel32.dll");
-                if (localK32 == IntPtr.Zero || remoteK32 == IntPtr.Zero)
+                // 解析目标进程内 AVEH/RVEH/ExitThread 远程地址：读目标 kernel32 导出表。
+                // kernel32 本体多为转发出口（AVEH→ntdll.RtlAddVectoredExceptionHandler 等），
+                // 解析器追踪一跳转发得到 ntdll 内真实地址。
+                // 不能用"本进程地址 + kernel32 基址差值"推算：主程序与目标架构不同时
+                // （x64 主程序 → x86 目标）两边 kernel32 是不同二进制，差值算出的地址
+                // 指向垃圾代码，远程线程一调用目标进程就崩。
+                ulong aveh = RemoteSymbols.ResolveTargetApi(pid, is64,
+                    "kernel32.dll", "AddVectoredExceptionHandler");
+                _rveh = RemoteSymbols.ResolveTargetApi(pid, is64,
+                    "kernel32.dll", "RemoveVectoredExceptionHandler");
+                _exitThread = RemoteSymbols.ResolveTargetApi(pid, is64,
+                    "kernel32.dll", "ExitThread");
+                if (aveh == 0 || _rveh == 0 || _exitThread == 0)
                 {
-                    error = "无法解析目标进程 kernel32 基址";
+                    error = "无法从目标进程 kernel32 导出表解析 AVEH/RVEH/ExitThread" +
+                        "（模块枚举失败或跨位数读取被拒）";
                     return false;
                 }
-                IntPtr localAdd = NativeInterop.GetProcAddress(localK32, "AddVectoredExceptionHandler");
-                IntPtr localRemove = NativeInterop.GetProcAddress(localK32, "RemoveVectoredExceptionHandler");
-                if (localAdd == IntPtr.Zero || localRemove == IntPtr.Zero)
-                {
-                    error = "本进程解析 AddVectoredExceptionHandler 失败";
-                    return false;
-                }
-                long delta = remoteK32.ToInt64() - localK32.ToInt64();
-                ulong aveh = (ulong)(localAdd.ToInt64() + delta);
-                _rveh = (ulong)(localRemove.ToInt64() + delta);
-                IntPtr localExitThread = NativeInterop.GetProcAddress(localK32, "ExitThread");
-                _exitThread = (ulong)(localExitThread.ToInt64() + delta);
-                if (localExitThread == IntPtr.Zero)
-                {
-                    error = "本进程解析 ExitThread 失败";
-                    return false;
-                }
-                ulong exitThread = (ulong)(localExitThread.ToInt64() + delta);
 
                 // 布局: [handler][data][regStub]（长度与地址值无关 → 先探测长度再按真实地址生成）
                 byte[] probe = _is64 ? BuildHandlerX64(0) : BuildHandlerX86(0);
@@ -119,8 +111,8 @@ namespace AsmStudio.Remote
 
                 // 注册: 远程线程 AddVectoredExceptionHandler(1, handler)，桩放在页尾区段
                 // （桩以 ExitThread 收尾 —— 远程线程桩不做最终 ret，见 veh_probe5 实验）
-                byte[] regStub = _is64 ? BuildRegStubX64(aveh, exitThread, handlerAddr, dataAddr)
-                                       : BuildRegStubX86(aveh, exitThread, handlerAddr, dataAddr);
+                byte[] regStub = _is64 ? BuildRegStubX64(aveh, _exitThread, handlerAddr, dataAddr)
+                                       : BuildRegStubX86(aveh, _exitThread, handlerAddr, dataAddr);
                 IntPtr regEntry = new IntPtr(_page.ToInt64() + regOff);
                 if (!NativeInterop.WriteProcessMemory(_proc, regEntry, regStub,
                         (UIntPtr)regStub.Length, out written))
@@ -363,7 +355,7 @@ namespace AsmStudio.Remote
             e.Bytes(0x8B, 0x11);                               // mov edx, [ecx]        ExceptionCode
             e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x38);   // mov [DATA+0x38], edx  lastSeenCode
             e.Bytes(0x8B, 0x50, 0x08);                         // mov edx, [eax+8]      CONTEXT*
-            e.Bytes(0x8B, 0x8A, 0xB0, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xB0]   eip
+            e.Bytes(0x8B, 0x8A, 0xB8, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xB8]   eip（x86 CONTEXT.Eip=0xB8）
             e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x40);   // mov [DATA+0x40], ecx  lastSeenRip
             e.Bytes(0xFF, 0x05); e.Abs32((long)dataAddr + 0x48);   // inc dword [DATA+0x48] seenCount
             e.Bytes(0x8B, 0x08);                               // mov ecx, [eax]        恢复 ER（被 rip 记录覆写）
@@ -377,7 +369,7 @@ namespace AsmStudio.Remote
             }
             e.Label("notours");
             e.Bytes(0x31, 0xC0);                               // xor eax, eax
-            e.Bytes(0xC2, 0x04, 0x00);                         // ret 4 (CONTINUE_SEARCH)
+            e.Bytes(0xC3);                         // ret 4 (CONTINUE_SEARCH)
             e.Label("ours");
             e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 8);  // mov [DATA+8], edx     lastExcCode
             e.Bytes(0xFF, 0x05); e.Abs32((long)dataAddr + 4);  // inc dword [DATA+4]    faultCount++
@@ -386,11 +378,11 @@ namespace AsmStudio.Remote
             e.Bytes(0x8B, 0x48, 0x08);                         // mov ecx, [eax+8]      CONTEXT*
             e.Bytes(0x8B, 0x15); e.Abs32((long)dataAddr + 0x10);   // mov edx, [DATA+0x10] savedEsp
             e.Bytes(0x83, 0xEA, 0x0C);                         // sub edx, 12           （等效 3 push + ret 已消费）
-            e.Bytes(0x89, 0x91, 0xBC, 0x00, 0x00, 0x00);       // mov [ecx+0xBC], edx   ctx.Esp
+            e.Bytes(0x89, 0x91, 0xC4, 0x00, 0x00, 0x00);       // mov [ecx+0xC4], edx   ctx.Esp（x86 CONTEXT.Esp=0xC4；0xBC 是 SegCs！）
             e.Bytes(0x8B, 0x15); e.Abs32((long)dataAddr + 0x18);   // mov edx, [DATA+0x18] resumeEip（宿主写入）
-            e.Bytes(0x89, 0x91, 0xB0, 0x00, 0x00, 0x00);       // mov [ecx+0xB0], edx   ctx.Eip
+            e.Bytes(0x89, 0x91, 0xB8, 0x00, 0x00, 0x00);       // mov [ecx+0xB8], edx   ctx.Eip（0xB0 是 Eax！）
             e.Bytes(0xB8, 0xFF, 0xFF, 0xFF, 0xFF);             // mov eax, -1
-            e.Bytes(0xC2, 0x04, 0x00);                         // ret 4
+            e.Bytes(0xC3);                         // ret 4
             return e.Finish();
         }
 

@@ -144,6 +144,97 @@ namespace AsmStudio.Remote
             return result;
         }
 
+        // ================= 目标 API 远程地址解析 =================
+        //
+        // 不能用"本进程 API 地址 + kernel32 基址差值"推算远程地址：
+        //   1. 主程序与目标架构不同（x64 主程序 → x86 目标）时两边 kernel32 是不同二进制，
+        //      差值算出的地址是垃圾，远程线程一调用目标进程就崩；
+        //   2. kernel32 的多数 API 是转发出口（如 ExitThread → ntdll.RtlExitUserThread），
+        //      需要追踪转发才能拿到真实实现地址。
+
+        private static readonly Dictionary<string, ulong> _apiCache =
+            new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _apiCacheLock = new object();
+
+        /// <summary>
+        /// 解析目标进程内某模块导出 API 的远程地址（读目标导出表，追踪一跳转发出口）。
+        /// 与主程序位数无关（x64 主程序可解析 x86 目标）。结果按 pid 缓存
+        /// （kernel32 基址每次开机随机一次，缓存安全）。返回 0 = 解析失败。
+        /// </summary>
+        public static ulong ResolveTargetApi(int pid, bool is64, string moduleName, string apiName)
+        {
+            string key = pid + "|" + is64 + "|" + StripDllSuffix(moduleName) + "!" + apiName;
+            lock (_apiCacheLock)
+            {
+                ulong cached;
+                if (_apiCache.TryGetValue(key, out cached)) return cached;
+            }
+            ulong addr = ResolveTargetApiSlow(pid, is64, moduleName, apiName);
+            if (addr != 0)
+            {
+                lock (_apiCacheLock) { _apiCache[key] = addr; }
+            }
+            return addr;
+        }
+
+        private static ulong ResolveTargetApiSlow(int pid, bool is64, string moduleName, string apiName)
+        {
+            List<ModuleInfo> modules = EnumModules(pid);
+            ModuleInfo mod = FindModule(modules, moduleName, is64);
+            if (mod == null) return 0;
+            return ResolveFromModule(pid, is64, modules, mod, apiName, 0);
+        }
+
+        /// <summary>模块地址是否与目标架构相符：x86 目标忽略 4GB 以上的高位映射
+        /// （WOW64 进程里同时映射着 64 位 ntdll，被取错会解析出 64 位地址，x86 代码调用即崩）。</summary>
+        private static bool IsPlausibleModule(ModuleInfo m, bool is64)
+        {
+            if (!is64 && m.Base > 0xFFFFFFFF) return false;
+            return true;
+        }
+
+        private static ModuleInfo FindModule(List<ModuleInfo> modules, string name, bool is64)
+        {
+            string want = StripDllSuffix(name);
+            foreach (ModuleInfo m in modules)
+            {
+                if (!IsPlausibleModule(m, is64)) continue;
+                if (string.Equals(StripDllSuffix(m.Name), want, StringComparison.OrdinalIgnoreCase))
+                    return m;
+            }
+            return null;
+        }
+
+        private static string StripDllSuffix(string name)
+        {
+            return name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                ? name.Substring(0, name.Length - 4) : name;
+        }
+
+        /// <summary>在单模块导出表中找 API；命中转发出口则到目标模块递归（最多 3 层）。</summary>
+        private static ulong ResolveFromModule(int pid, bool is64, List<ModuleInfo> modules,
+            ModuleInfo mod, string apiName, int depth)
+        {
+            if (mod == null || depth > 2) return 0;
+            string exact = mod.Name.ToLowerInvariant() + "!" + apiName;   // ReadExports 的名称前缀
+            List<SymbolInfo> exports = ReadExports(pid, mod, is64);
+            foreach (SymbolInfo s in exports)
+            {
+                if (!s.Name.StartsWith(exact, StringComparison.OrdinalIgnoreCase)) continue;
+                if (s.Name.Length == exact.Length) return s.Address;      // 本模块真实导出
+                int arrow = s.Name.IndexOf(" -> ", StringComparison.Ordinal);
+                if (arrow < 0) continue;                                  // 同前缀的更长名称，跳过
+                // 转发出口: "mod!api -> TARGET.Api"
+                string fwd = s.Name.Substring(arrow + 4);
+                int dot = fwd.LastIndexOf('.');
+                if (dot <= 0) return 0;
+                ModuleInfo fwdMod = FindModule(modules, fwd.Substring(0, dot), is64);
+                return ResolveFromModule(pid, is64, modules, fwdMod,
+                    fwd.Substring(dot + 1), depth + 1);
+            }
+            return 0;
+        }
+
         private static byte[] ReadBytes(IntPtr proc, ulong addr, uint size)
         {
             byte[] buf = new byte[size];
