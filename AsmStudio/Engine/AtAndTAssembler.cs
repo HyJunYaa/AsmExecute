@@ -95,7 +95,10 @@ namespace AsmStudio.Engine
                     goto operands;
                 }
             }
-            if (m.Length >= 4 && IsSuffix(m[m.Length - 1]))
+            // 长度只要求"助记符+后缀 ≥ 3"：旧写 >= 4 让 orl/orb/btq/btl 这类
+            // 3 字符助记符永远剥不掉后缀（btq 会被当成未知指令）。
+            // 误伤由下面的 IsSuffixStrippable 白名单兜住（call→cal、sal→sa 都不会命中）。
+            if (m.Length >= 3 && IsSuffix(m[m.Length - 1]))
             {
                 // 仅当剥离后缀后是已知助记符时才剥离（避免误伤 call→cal、sal→sa 等）
                 char sfx = m[m.Length - 1];

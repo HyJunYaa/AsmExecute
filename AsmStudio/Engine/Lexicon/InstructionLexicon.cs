@@ -84,6 +84,7 @@ namespace AsmStudio.Engine
                 "shl", "sal", "shr", "sar",
                 "rol", "ror", "rcl", "rcr",
                 "inc", "dec",
+                "bt", "bts", "btr", "btc", "bsf", "bsr", "xadd", "bswap",
                 "movs", "stos", "lods", "scas", "cmps",
                 "movabs"
             })

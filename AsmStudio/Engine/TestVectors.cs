@@ -195,6 +195,35 @@ namespace AsmStudio.Engine
             v.Add(new Vector(I, X64, "imul rbx, rax, 3", "48 6B D8 03"));
             v.Add(new Vector(A, X64, "imulq $3, %rax, %rbx", "48 6B D8 03"));
 
+            // ============ r8-r15 + /digit 形式（REX.B 必须发出）============
+            // 这类指令的 reg 字段被 /digit 占用，操作数只能进 r/m，r8-r15 全靠 REX.B
+            v.Add(new Vector(I, X64, "add r8, 1", "49 83 C0 01"));
+            v.Add(new Vector(I, X64, "add r10b, 1", "41 80 C2 01"));
+            v.Add(new Vector(I, X64, "sub r12, 0x12345678", "49 81 EC 78 56 34 12"));
+            v.Add(new Vector(I, X64, "shl r9, 4", "49 C1 E1 04"));
+            v.Add(new Vector(I, X64, "sar r10, cl", "49 D3 FA"));
+            v.Add(new Vector(I, X64, "test r10, 1", "49 F7 C2 01 00 00 00"));
+            v.Add(new Vector(I, X64, "bt r11, 3", "49 0F BA E3 03"));
+            v.Add(new Vector(I, X64, "neg r8b", "41 F6 D8"));
+            v.Add(new Vector(I, X64, "bsf r8, r9", "4D 0F BC C1"));   // REX.X 不能跟着置位
+            v.Add(new Vector(I, X64, "mov r8b, 1", "41 B0 01"));
+
+            // ============ push/pop 内存形式（FF /6、FF /0 的 opcode 字节）============
+            v.Add(new Vector(I, X64, "push qword ptr [r8]", "41 FF 30"));
+            v.Add(new Vector(I, X64, "pop qword ptr [r9]", "41 FF 01"));
+            v.Add(new Vector(I, X64, "push qword ptr [rax]", "FF 30"));
+
+            // ============ SIB：r12 作基址必须发 SIB（rsp 的特例同样适用）============
+            v.Add(new Vector(I, X64, "mov rax, [r12]", "49 8B 04 24"));
+            v.Add(new Vector(I, X64, "mov rax, [r12+8]", "49 8B 44 24 08"));
+            v.Add(new Vector(I, X64, "mov rax, [r13]", "49 8B 45 00"));
+            v.Add(new Vector(I, X64, "mov rax, [r15+r14]", "4B 8B 04 37"));
+            v.Add(new Vector(I, X64, "lea r8, [r9+r10*2+8]", "4F 8D 44 51 08"));
+
+            // ============ AT&T 3 字符助记符后缀（orl/btq 以前剥不掉）============
+            v.Add(new Vector(A, X64, "orl $1, %eax", "83 C8 01"));
+            v.Add(new Vector(A, X64, "btq $3, %r11", "49 0F BA E3 03"));
+
             return v;
         }
 

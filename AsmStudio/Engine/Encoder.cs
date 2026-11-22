@@ -334,8 +334,8 @@ namespace AsmStudio.Engine
 
             if (hasIndex && hasBase)
             {
-                if (m.IndexReg == 4 && IsX64) Fail("rsp cannot be an index register");
-                if (!IsX64 && m.IndexReg == 4) Fail("esp cannot be an index register");
+                if (m.IndexReg % 8 == 4)
+                    Fail(IsX64 ? "rsp/r12 cannot be an index register" : "esp cannot be an index register");
                 long disp = ResolveMemDisp(m);
                 int mod;
                 if (m.BaseReg % 8 == 5 && (IsX64 || m.BaseReg == 5))
@@ -362,7 +362,7 @@ namespace AsmStudio.Engine
             if (!hasBase && hasIndex)
             {
                 // 仅变址no base → SIB no base形式 (mod=0, base=101)
-                if (breg == 4) Fail("rsp/esp cannot be an index register");
+                if (breg % 8 == 4) Fail(IsX64 ? "rsp/r12 cannot be an index register" : "esp cannot be an index register");
                 long disp = ResolveMemDisp(m);
                 int sib = (ScaleBits(m.Scale) << 6) | ((breg % 8) << 3) | 0x05;
                 Emit((byte)((0x00 << 6) | (regField3 << 3) | 0x04));
@@ -372,23 +372,23 @@ namespace AsmStudio.Engine
             }
 
             // 仅 base
-            if (breg == 4)
+            if (breg % 8 == 4)
             {
-                // esp/rsp 基址必须 SIB
+                // rsp/r12 基址必须 SIB：rm=100 的含义就是"SIB 紧随其后"，
+                // 旧写成 breg==4 只覆盖 rsp，[r12] 会漏掉 SIB 字节，后续字节被当 SIB 解释 → 整条流错位
                 int mod;
                 long disp = ResolveMemDisp(m);
                 if (disp == 0 && m.DispSymbol == null) mod = 0;
                 else if (disp >= -128 && disp <= 127) mod = 1;
                 else mod = 2;
                 Emit((byte)((mod << 6) | (regField3 << 3) | 0x04));
-                Emit((byte)(0x00 << 6 | 0x04 << 3 | 0x04));   // scale=0, index=none(100), base=rsp(100)
+                Emit((byte)(0x00 << 6 | 0x04 << 3 | 0x04));   // scale=0, index=none(100), base=100
                 EmitDispForMod(mod, disp);
                 return;
             }
-            if (breg == 5 || breg == 13)
+            if (breg % 8 == 5)
             {
-                if (!IsX64 && breg == 13) Fail("invalid register on x86");
-                // rbp/ebp 作基址：mod=00+rm101 会被解释为 disp32 绝对，必须 disp8=0
+                // rbp/r13 作基址：mod=00+rm101 会被解释为 disp32 绝对，必须 disp8=0
                 long disp = ResolveMemDisp(m);
                 int mod = (disp >= -128 && disp <= 127) ? 1 : 2;
                 Emit((byte)((mod << 6) | (regField3 << 3) | 0x05));
@@ -616,6 +616,7 @@ namespace AsmStudio.Engine
                         if (!IsX64 && size == 8) Fail("invalid qword on x86");
                         EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                             o.Mem.Segment, size == 2, st.RepKind, false);
+                        Emit(0xFF);                 // FF /6 = push r/m（原缺此字节：push [r8] 被编成 41 30 = xor [r8], dh）
                         EmitMemModRm(o.Mem, 6, 0);
                         return;
                     }
@@ -652,6 +653,7 @@ namespace AsmStudio.Engine
                         if (!IsX64 && size == 8) Fail("invalid qword on x86");
                         EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                             o.Mem.Segment, size == 2, st.RepKind, false);
+                        Emit(0xFF);                 // FF /0 = pop r/m（同上：原缺 opcode）
                         EmitMemModRm(o.Mem, 0, 0);
                         return;
                     }
@@ -912,9 +914,7 @@ namespace AsmStudio.Engine
                 if (ds == 1) Fail(m + " does not support 8-bit operands");
                 if (!IsReg(dst, out rd)) Fail(m + ": first operand must be a register");
                 if (!IsX64 && ds == 8) Fail("invalid 64-bit register on x86");
-                EmitLegacyAndRex(ds == 8, rd.RexBit,
-                    IsMem(src) ? RexIndexOfMemIndex(src.Mem) : RegHighBit(src),
-                    IsMem(src) ? RexIndexOfMemBase(src.Mem) : RegLowBit(src),
+                EmitLegacyAndRex(ds == 8, rd.RexBit, RexIdxOf(src), RexBaseOf(src),
                     FindMemSeg(dst, src), ds == 2, st.RepKind, false);
                 Emit(0x0F, m == "bsf" ? (byte)0xBC : (byte)0xBD);
                 if (IsReg(src, out rs)) EmitModRmReg(rd.Code, rs, rs.RexBit);
@@ -1353,7 +1353,7 @@ namespace AsmStudio.Engine
                 if (size == 1)
                 {
                     if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
-                    EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                    EmitLegacyAndRex(false, 0, RexIdxOf(dst), RexBaseOf(dst),
                         FindMemSeg(dst, src), false, st.RepKind, lockable);
                     Emit(0x80);
                     EmitRm(dst, digit);
@@ -1363,7 +1363,7 @@ namespace AsmStudio.Engine
                 if (size == 2 && (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2))) Fail("16-bit immediate overflow");
                 if (size >= 4 && !ImmFitsSigned(v, 4)) Fail(m + ": immediate exceeds signed 32-bit range");
                 bool use83 = ImmFitsSigned(v, 1) && (size == 2 || size >= 4);
-                EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                EmitLegacyAndRex(w, 0, RexIdxOf(dst), RexBaseOf(dst),
                     FindMemSeg(dst, src), size == 2, st.RepKind, lockable);
                 Emit(use83 ? (byte)0x83 : (byte)0x81);
                 EmitRm(dst, digit);
@@ -1421,7 +1421,7 @@ namespace AsmStudio.Engine
                 if (size == 1 && (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1))) Fail("8-bit immediate overflow");
                 if (size == 2 && (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2))) Fail("16-bit immediate overflow");
                 if (size >= 4 && !ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("Immediate overflow");
-                EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                EmitLegacyAndRex(w, 0, RexIdxOf(dst), RexBaseOf(dst),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0xF6 : (byte)0xF7);
                 EmitRm(dst, 0);
@@ -1473,7 +1473,7 @@ namespace AsmStudio.Engine
                 if (rs.Size != 1 || rs.Index != 1 || rs.High)
                     Fail(m + ": count operand can only be cl");
                 bool w = size == 8;
-                EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                EmitLegacyAndRex(w, 0, RexIdxOf(dst), RexBaseOf(dst),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0xD2 : (byte)0xD3);
                 EmitRm(dst, digit);
@@ -1486,13 +1486,13 @@ namespace AsmStudio.Engine
                 bool w = size == 8;
                 if (v == 1)
                 {
-                    EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                    EmitLegacyAndRex(w, 0, RexIdxOf(dst), RexBaseOf(dst),
                         FindMemSeg(dst, src), size == 2, st.RepKind, false);
                     Emit(size == 1 ? (byte)0xD0 : (byte)0xD1);
                     EmitRm(dst, digit);
                     return;
                 }
-                EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                EmitLegacyAndRex(w, 0, RexIdxOf(dst), RexBaseOf(dst),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0xC0 : (byte)0xC1);
                 EmitRm(dst, digit);
@@ -1549,7 +1549,7 @@ namespace AsmStudio.Engine
                 long v = ImmValue(src);
                 if (v < 0 || v > 255) Fail(m + ": bit index exceeds 0-255");
                 bool w = size == 8;
-                EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
+                EmitLegacyAndRex(w, 0, RexIdxOf(dst), RexBaseOf(dst),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
                 Emit(0x0F, 0xBA);
                 EmitRm(dst, digitImm);
@@ -1766,12 +1766,6 @@ namespace AsmStudio.Engine
 
         // ==================== REX 辅助 ====================
 
-        private static int RegHighBit(Operand o)
-        {
-            Reg r;
-            if (IsReg(o, out r)) return r.RexBit;
-            return 0;
-        }
         private static int RegLowBit(Operand o)
         {
             Reg r;
@@ -1787,6 +1781,27 @@ namespace AsmStudio.Engine
         {
             if (m == null || m.IndexReg < 0) return 0;
             return (m.IndexReg >> 3) & 1;
+        }
+
+        /* 下面两个用于"操作数在 r/m 字段"的指令（/digit 组、移位、test、bt 等）。
+         * 这类指令的 reg 字段被 /digit 占用，操作数只能落在 r/m，因此 r8-r15 只能靠 REX.B
+         * 表达。若像旧代码那样直接传 dst.Mem（寄存器时为 null），RexIndexOfMemBase 返回 0，
+         * REX.B 永远不发射 → add r8,1 被静默编成 add rax,1。 */
+
+        /// <summary>r/m 操作数的 REX.B：寄存器取高位，内存取基址寄存器</summary>
+        private static int RexBaseOf(Operand o)
+        {
+            Reg r;
+            if (IsReg(o, out r)) return r.RexBit;
+            return RexIndexOfMemBase(o.Mem);
+        }
+
+        /// <summary>r/m 操作数的 REX.X：寄存器形式恒 0，内存形式取索引寄存器</summary>
+        private static int RexIdxOf(Operand o)
+        {
+            Reg r;
+            if (IsReg(o, out r)) return 0;
+            return RexIndexOfMemIndex(o.Mem);
         }
 
         /// <summary>发射 rm 字段（寄存器或memory），reg 字段为 /digit</summary>

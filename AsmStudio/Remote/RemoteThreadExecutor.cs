@@ -294,7 +294,7 @@ namespace AsmStudio.Remote
             else
             {
                 s.AddRange(new byte[] { 0x48, 0x8B, 0x5C, 0x24, 0x10 });   // mov rbx, [rsp+16]（无 VEH，尽力而为）
-                s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });               // mov rdi, [rbx+8]
+                s.AddRange(new byte[] { 0x48, 0x8B, 0x7B, 0x08 });         // mov rdi, [rbx+8]（必须 64 位读，edi 会截断高位地址）
             }
             /* 用户码执行后、call target 前的寄存器快照：只有 "mov [rbx+disp32], reg"，
              * 不碰栈、不改任何寄存器值，因此不影响后续赋参与调用。 */
