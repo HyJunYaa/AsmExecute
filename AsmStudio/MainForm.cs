@@ -56,12 +56,11 @@ namespace AsmStudio
                     d.UntouchedDefault = true;
                 }
             Log(T("AsmStudio ready. Usage:"));
-            Log(T("  1. Start a target (bin\\Debug\\x64\\TargetCpp.exe or TargetSharp.exe)"));
+            Log(T("  1. Start a target (bin\\Debug\\x64\\GameSharp.exe, or your own process)"));
             Log(T("  2. Click [Scan Processes], pick a target, then Connect"));
             Log(T("  3. Edit assembly → Validate → Execute / call target function"));
             Log(T("  4. [Schemes] menu loads Resources\\Scheme\\*.asmscheme and runs them"));
             Log("");
-            Log(T("Tip: in-process mode needs AsmLibrary.dll next to the main exe."));
         }
 
         // ================= 多区域语言 =================
@@ -77,6 +76,8 @@ namespace AsmStudio
             _origTexts.Clear();
             _origTexts[this] = Text;
             SnapshotMenu(menuStrip);
+            SnapshotMenu(tabCloseMenu);     // 标签右键菜单（ContextMenuStrip 不在 Controls 树里，须显式覆盖）
+            SnapshotMenu(logClearMenu);     // 执行日志右键菜单
             foreach (ToolStripItem it in statusStrip.Items)
                 _origTexts[it] = it.Text;
             foreach (ToolStripItem it in toolbar.Items)
@@ -127,6 +128,8 @@ namespace AsmStudio
         {
             Text = T(OrigText(this, Text));
             ApplyMenuItems(menuStrip);
+            ApplyMenuItems(tabCloseMenu);   // 标签右键菜单
+            ApplyMenuItems(logClearMenu);   // 执行日志右键菜单
             foreach (ToolStripItem it in statusStrip.Items)
                 it.Text = T(OrigText(it, it.Text));
             foreach (ToolStripItem it in toolbar.Items)
@@ -222,9 +225,8 @@ namespace AsmStudio
                     if (s != null) this.Icon = new Icon(s);
                 }
                 btnScan.Image = (Image)_appRes.GetObject("Scan");
-                btnConnect.Image = (Image)_appRes.GetObject(T("Connect"));
-                btnDisconnect.Image = (Image)_appRes.GetObject(T("Disconnect"));
-                btnSymbols.Image = (Image)_appRes.GetObject("Refresh");
+                btnConnect.Image = (Image)_appRes.GetObject("Connect");
+                btnDisconnect.Image = (Image)_appRes.GetObject("Disconnect");
                 btnAssemble.Image = (Image)_appRes.GetObject("Validate");
                 btnAssemble.TextImageRelation = TextImageRelation.ImageBeforeText;
                 btnExecute.Image = (Image)_appRes.GetObject("Run");
@@ -597,7 +599,7 @@ namespace AsmStudio
             MessageBox.Show(this,
                 "AsmStudio — Assemble / Validate / Remote Execute\n\n" +
                 "C# self-built assembly engine (Intel/AT&T, x86/x64)\n" +
-                "AsmLibrary.dll: in-process VEH sandbox for the host process\n\n" +
+                "Remote channels: RemoteThread+VEH / RemoteThread (no DLL, no injection)\n\n" +
                 T("For development/debugging of your own or authorized processes only."),
                 T("About"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -722,7 +724,6 @@ namespace AsmStudio
                 switch (cboChannel.SelectedIndex)
                 {
                     case 1: return ExecChannel.RemoteThread;
-                    case 2: return ExecChannel.InProcess;
                     default: return ExecChannel.RemoteThreadVeh;
                 }
             }
@@ -730,32 +731,13 @@ namespace AsmStudio
 
         private void ChannelChanged(object sender, EventArgs e)
         {
-            cboProcess.Enabled = SelectedChannel != ExecChannel.InProcess;
+            cboProcess.Enabled = true;
         }
 
         private void BtnConnectClick(object sender, EventArgs e)
         {
             Disconnect();
             ExecChannel channel = SelectedChannel;
-
-            if (channel == ExecChannel.InProcess)
-            {
-                _session = new TargetSession();
-                if (_session.Connect(null, ExecChannel.InProcess))
-                {
-                    _session.LoadInProcessDemoSymbols();
-                    _sessionConnected = true;
-                    lblMode.Text = T("Connected: in-process (VEH sandbox)");
-                    Log("[+] In-process mode ready (demo symbols: DemoAdd/DemoEcho)");
-                }
-                else
-                {
-                    Log("[!] " + _session.LastError);
-                    _session.Dispose();
-                    _session = null;
-                }
-                return;
-            }
 
             ProcessInfo target = SelectedProcess;
             if (target == null)
@@ -811,14 +793,6 @@ namespace AsmStudio
             cboSymbol.Items.Clear();
         }
 
-        private void BtnSymbolsClick(object sender, EventArgs e)
-        {
-            if (_session != null && _sessionConnected && _session.Target != null)
-                FillRemoteModules();
-            else
-                Log(T("Please connect to a target first."));
-        }
-
         // ---- 远程符号源：模块列表 → 模块导出 API ----
 
         private List<RemoteSymbols.ModuleInfo> _remoteModules =
@@ -826,6 +800,8 @@ namespace AsmStudio
         private List<SymbolInfo> _remoteExports = new List<SymbolInfo>();
         private int _symbolMode;   // 1=模块列表 2=某模块导出
 
+        /// <summary>连接后自动填充模块列表。不自动钻进第一个模块——
+        /// 多数程序自身导出为 0，钻进去只会得到空下拉（实测教训）。</summary>
         private void FillRemoteModules()
         {
             _symbolTable.Clear();
@@ -835,8 +811,8 @@ namespace AsmStudio
             foreach (RemoteSymbols.ModuleInfo m in _remoteModules)
                 cboSymbol.Items.Add(m.Name);
             _symbolMode = 1;
+            cboSymbol.SelectedIndex = -1;   // 保持模块列表视图，不触发钻取
             Log("[+] Module list refreshed: " + _remoteModules.Count + T(" (select a module to list its exports)"));
-            if (cboSymbol.Items.Count > 0) cboSymbol.SelectedIndex = 0;
         }
 
         private void LoadRemoteExports(RemoteSymbols.ModuleInfo m)
@@ -851,6 +827,19 @@ namespace AsmStudio
             finally
             {
                 Cursor = Cursors.Default;
+            }
+            if (_remoteExports.Count == 0)
+            {
+                // 该模块无导出 → 记录并回退模块列表视图（避免空下拉）
+                Log("[+] " + m.Name + T(" exports: 0 (module has no exported APIs)"));
+                _symbolTable.Clear();
+                _remoteExports.Clear();
+                cboSymbol.Items.Clear();
+                foreach (RemoteSymbols.ModuleInfo mm in _remoteModules)
+                    cboSymbol.Items.Add(mm.Name);
+                _symbolMode = 1;
+                cboSymbol.SelectedIndex = -1;
+                return;
             }
             _symbolTable.Clear();
             cboSymbol.Items.Clear();
@@ -1064,15 +1053,7 @@ namespace AsmStudio
 
             Log("======== Execute (" + result.Code.Length + T(" bytes, ") +
                 (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) + ") ========");
-            ExecutionResult r;
-            if (_session.Channel == ExecChannel.InProcess)
-            {
-                r = _session.ExecuteLocal(result.Code, args, nargs, callTarget, timeout);
-            }
-            else
-            {
-                r = _session.Execute(result.Code, args, nargs, callTarget, modeCall, timeout);
-            }
+            ExecutionResult r = _session.Execute(result.Code, args, nargs, callTarget, modeCall, timeout);
             ShowResult(r);
         }
 
@@ -1136,19 +1117,33 @@ namespace AsmStudio
             return sb.ToString();
         }
 
-        private static void AppendRegs(StringBuilder sb, string title, ulong[] regs)
+        private static readonly string[] _regNames32 =
+            { "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi" };
+
+        private bool TargetIs32Bit
         {
+            get
+            {
+                TargetSession s = _session;
+                return s != null && s.Target != null && !s.Target.Is64Bit;
+            }
+        }
+
+        private void AppendRegs(StringBuilder sb, string title, ulong[] regs)
+        {
+            bool is32 = TargetIs32Bit;
             sb.AppendLine("[" + title + "]");
-            for (int i = 0; i < RegIdx.Count; i += 2)
+            int count = is32 ? 8 : RegIdx.Count;   // x86 只显示 8 个 32 位寄存器
+            for (int i = 0; i < count; i += 2)
             {
                 sb.Append("  ");
-                sb.Append(RegIdx.Name(i).PadRight(4));
+                sb.Append((is32 ? _regNames32[i] : RegIdx.Name(i)).PadRight(4));
                 sb.Append("= 0x");
-                sb.Append(regs[i].ToString("X16"));
+                sb.Append(regs[i].ToString(is32 ? "X8" : "X16"));
                 sb.Append("    ");
-                sb.Append(RegIdx.Name(i + 1).PadRight(4));
+                sb.Append((is32 ? _regNames32[i + 1] : RegIdx.Name(i + 1)).PadRight(4));
                 sb.Append("= 0x");
-                sb.AppendLine(regs[i + 1].ToString("X16"));
+                sb.AppendLine(regs[i + 1].ToString(is32 ? "X8" : "X16"));
             }
         }
 

@@ -208,21 +208,39 @@ namespace AsmStudio.Remote
             if (vehData != 0)
             {
                 // 桩入口记录 savedRsp / flag=1（崩溃由 handler 内 ExitThread 终止线程）
-                // 用 r10 易变寄存器，不得动 rcx（其后 rbx,rcx 读线程参数）
                 s.AddRange(new byte[] { 0x49, 0xBA }); AddQ(s, vehData);   // movabs r10, vehData
                 s.AddRange(new byte[] { 0x49, 0x89, 0x62, 0x10 });         // mov [r10+0x10], rsp   savedRsp
                 s.AddRange(new byte[] { 0x41, 0xC7, 0x02, 0x01, 0x00, 0x00, 0x00 }); // mov dword [r10], 1
+                s.AddRange(new byte[] { 0x65, 0x48, 0x8B, 0x04, 0x25, 0x30, 0x00, 0x00, 0x00 }); // mov rax, gs:[0x30]  本线程 TEB
+                s.AddRange(new byte[] { 0x49, 0x89, 0x42, 0x68 });         // mov [r10+0x68], rax（handler 据此只拦本会话线程）
+            }
+            s.AddRange(new byte[] { 0x48, 0x89, 0xCB });        // mov rbx, rcx   数据块指针
+            if (vehData != 0)
+            {
+                s.AddRange(new byte[] { 0x49, 0x89, 0x53, 0x74 });         // mov [r10+0x74], rbx 数据块指针存锚点
             }
             s.Add(0x53);                       // push rbx
             s.Add(0x57);                       // push rdi
             s.Add(0x56);                       // push rsi
-            s.AddRange(new byte[] { 0x48, 0x89, 0xCB });        // mov rbx, rcx
             s.AddRange(new byte[] { 0x48, 0x8B, 0x7B, 0x08 });  // mov rdi, [rbx+8]
             // mov rax, [rbx] (code); test; jz 跳过 call
             s.AddRange(new byte[] { 0x48, 0x8B, 0x03 });        // mov rax, [rbx]
             s.AddRange(new byte[] { 0x48, 0x85, 0xC0 });        // test rax, rax
             s.Add(0x74); s.Add(0x02);                            // jz +2（跳过 call rax）
             s.Add(0xFF); s.Add(0xD0);                            // call rax
+            /* 用户码/被调函数可能毁掉 rbx/rdi/r10，用户码 ret 也会打乱 esp——
+             * 一律经 VEH 块锚点（movabs 绝对地址）重载，不依赖 esp/寄存器存活 */
+            if (vehData != 0)
+            {
+                s.AddRange(new byte[] { 0x48, 0xB9 }); AddQ(s, vehData);   // movabs rcx, vehData
+                s.AddRange(new byte[] { 0x48, 0x8B, 0x59, 0x74 });         // mov rbx, [rcx+0x74]
+                s.AddRange(new byte[] { 0x48, 0x8B, 0x7B, 0x08 });         // mov rdi, [rbx+8]
+            }
+            else
+            {
+                s.AddRange(new byte[] { 0x48, 0x8B, 0x5C, 0x24, 0x10 });   // mov rbx, [rsp+16]（无 VEH，尽力而为）
+                s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });               // mov rdi, [rbx+8]
+            }
             if (callTarget != 0)
             {
                 if (nargs > 0) { s.AddRange(new byte[] { 0x48, 0xB9 }); AddQ(s, args[0]); }   // mov rcx
@@ -268,16 +286,38 @@ namespace AsmStudio.Remote
                 s.AddRange(new byte[] { 0xC7, 0x05 });                     // mov dword [vehData], 1
                 AddD(s, (uint)vehData);
                 AddD(s, 1);
+                s.AddRange(new byte[] { 0x64, 0xA1, 0x18, 0x00, 0x00, 0x00 }); // mov eax, fs:[0x18]  本线程 TEB
+                s.AddRange(new byte[] { 0x89, 0x05 });                     // mov [vehData+0x68], eax（handler 据此只拦本会话线程）
+                AddD(s, (uint)(vehData + 0x68));
             }
-            s.Add(0x53);                       // push ebx
+            s.AddRange(new byte[] { 0x8B, 0x5C, 0x24, 0x04 });   // mov ebx, [esp+4]   线程参数=数据块（entry: [esp]=ret）
+            if (vehData != 0)
+            {
+                s.AddRange(new byte[] { 0x89, 0x1D });                     // mov [vehData+0x74], ebx 数据块指针存锚点
+                AddD(s, (uint)(vehData + 0x74));
+            }
+            s.Add(0x53);                       // push ebx（原始栈布局：3 push 供收尾/恢复一致）
             s.Add(0x57);                       // push edi
             s.Add(0x56);                       // push esi
-            s.AddRange(new byte[] { 0x8B, 0x5C, 0x24, 0x10 });   // mov ebx, [esp+16]
             s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });         // mov edi, [ebx+8]
             s.AddRange(new byte[] { 0x8B, 0x03 });               // mov eax, [ebx]
             s.AddRange(new byte[] { 0x85, 0xC0 });               // test eax, eax
             s.Add(0x74); s.Add(0x02);                            // jz +2（跳过 call eax）
             s.Add(0xFF); s.Add(0xD0);                            // call eax
+            /* 用户码/被调函数可能毁掉 ebx/edi（非常规约定，unepic 实测），且用户码
+             * 末尾 ret 会弹掉 call 压入的返回地址（esp 位置不可预知）——一律从
+             * VEH 块锚点绝对寻址重载，不依赖 esp 也不依赖寄存器存活 */
+            if (vehData != 0)
+            {
+                s.AddRange(new byte[] { 0x8B, 0x1D });                     // mov ebx, [vehData+0x74]
+                AddD(s, (uint)(vehData + 0x74));
+                s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });               // mov edi, [ebx+8]
+            }
+            else
+            {
+                s.AddRange(new byte[] { 0x8B, 0x5C, 0x24, 0x08 });   // mov ebx, [esp+8]（无 VEH，尽力而为）
+                s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });         // mov edi, [ebx+8]
+            }
             if (callTarget != 0)
             {
                 for (int i = nargs - 1; i >= 0; i--)

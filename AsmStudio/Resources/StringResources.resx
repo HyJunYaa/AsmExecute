@@ -96,9 +96,6 @@
   <data name="Disconnect" xml:space="preserve">
     <value>Disconnect</value>
   </data>
-  <data name="Refresh Symbols" xml:space="preserve">
-    <value>Refresh Symbols</value>
-  </data>
   <data name="Syntax Style" xml:space="preserve">
     <value>Syntax Style</value>
   </data>
@@ -147,11 +144,26 @@
   <data name="AsmStudio ready. Usage:" xml:space="preserve">
     <value>AsmStudio ready. Usage:</value>
   </data>
-  <data name="  1. Start a target (bin\Debug\x64\TargetCpp.exe or TargetSharp.exe)" xml:space="preserve">
-    <value>  1. Start a target (bin\Debug\x64\TargetCpp.exe or TargetSharp.exe)</value>
+  <data name="  1. Start a target (bin\Debug\x64\GameSharp.exe, or your own process)" xml:space="preserve">
+    <value>  1. Start a target (bin\Debug\x64\GameSharp.exe, or your own process)</value>
   </data>
   <data name="  2. Click [Scan Processes], pick a target, then Connect" xml:space="preserve">
     <value>  2. Click [Scan Processes], pick a target, then Connect</value>
+  </data>
+  <data name="&amp;Close" xml:space="preserve">
+    <value>&amp;Close</value>
+  </data>
+  <data name="&amp;Save This" xml:space="preserve">
+    <value>&amp;Save This</value>
+  </data>
+  <data name="Close &amp;Others" xml:space="preserve">
+    <value>Close &amp;Others</value>
+  </data>
+  <data name="Close &amp;All" xml:space="preserve">
+    <value>Close &amp;All</value>
+  </data>
+  <data name="&amp;Clear Log" xml:space="preserve">
+    <value>&amp;Clear Log</value>
   </data>
   <data name="  3. Edit assembly → Validate → Execute / call target function" xml:space="preserve">
     <value>  3. Edit assembly → Validate → Execute / call target function</value>
@@ -272,6 +284,9 @@
   </data>
   <data name=" exports: " xml:space="preserve">
     <value> exports: </value>
+  </data>
+  <data name=" exports: 0 (module has no exported APIs)" xml:space="preserve">
+    <value> exports: 0 (module has no exported APIs)</value>
   </data>
   <data name=" (select an API to fill the call target)" xml:space="preserve">
     <value> (select an API to fill the call target)</value>

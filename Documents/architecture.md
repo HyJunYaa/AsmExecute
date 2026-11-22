@@ -3,80 +3,74 @@
 ## 总体数据流
 
 ```
-AsmStudio (C#)                         TargetCpp / TargetSharp
- ┌──────────────────┐   ①扫描/连接     ┌──────────────────────────┐
- │ C# 自研汇编引擎   │                  │  游戏(血量/得分)          │
- │  Intel/AT&T      │                  │  GameAddScore/...        │
- │  → 机器码 hex     │  ②命名管道       │  ┌────────────────────┐ │
- │  PipeClient ─────┼─────────────────►│  │ AsmLibrary.dll (C)  │ │
- │  RemoteThread ───┼─ ③远程线程兜底    │  │  VEH 沙箱执行器      │ │
- └──────────────────┘                  │  │  符号表              │ │
-                                       │  │  管道服务端          │ │
-                                       │  └────────────────────┘ │
-                                       └──────────────────────────┘
+AsmStudio (C#)                              目标进程（任意程序）
+ ┌────────────────────────┐  ①扫描/连接     ┌──────────────────────────┐
+ │ C# 自研汇编引擎         │                │  游戏逻辑 / 业务函数       │
+ │  Intel/AT&T            │                │  （内部符号不公开）        │
+ │  → 机器码              │  ②远程线程      │  ┌──────────────────────┐ │
+ │  RemoteThreadExecutor ─┼───────────────►│  │ [stub][data][code]   │ │
+ │  AsmVehProtector ──────┼─ ③远程注册      │  │  汇编 VEH handler     │ │
+ │  （纯汇编 handler 页）   │    RWX 页       │  └──────────────────────┘ │
+ └────────────────────────┘                └──────────────────────────┘
 ```
 
-- **主模式（管道+DLL）**：目标启动即加载 AsmLibrary.dll、注册符号、开管道。
-  主程序本地汇编 → EXEC 发送机器码 hex → AsmLibrary 沙箱执行 → 回传 ret/寄存器/异常。
-- **兜底（远程线程）**：OpenProcess + VirtualAllocEx(RWX) + 写入 [stub][data][code]
-  + CreateRemoteThread(stub)。stub 由主程序按目标位数生成（位置无关、参数以 imm 编入），
-  执行结果写入 data 块后 ReadProcessMemory 取回。无 VEH 保护。
-- **本进程**：主程序 P/Invoke 自身架构的 AsmLibrary.dll 直接执行（复用同一沙箱）。
+- **主模式（远程线程+VEH）**：目标无需加载任何组件。主程序远程写两页 RWX——
+  VEH 页 `[handler][data 128B][regStub]`（远程线程调 AVEH 注册 handler），
+  执行页 `[stub][data 64B][user code + ret]`（CreateRemoteThread(stub) 执行）。
+  崩溃由 handler 在目标内重置上下文吞掉，宿主读回 data 块取异常现场。
+- **兜底（远程线程）**：同一执行页，不注册 handler。坏汇编码即目标崩溃，仅用于对照/特殊场景。
+- 无注入、无管道、无第三方 DLL 参与；符号全部来自目标模块的 PE 导出表（RemoteSymbols 读远程 PE）。
 
-## AsmLibrary 沙箱执行器（VEH + 恢复桩）
+## 远程线程桩（RemoteThreadExecutor）
 
-### 常驻执行页布局（每架构 DLL 一页）
-
-```
-+0x0000  网关桩:  jmp qword [rip+0] / jmp dword [abs32]
-+0x0006  网关槽:  每次 EXEC 前写入 mid capture 地址
-+0x0040  用户代码区:  EXEC 的机器码 + 末尾自动补 ret（最大 ~30KB）
-+0x8000  trampoline + 恢复桩（每次 EXEC 重新生成）
-```
-
-### 一次 EXEC 的流程（x64）
-
-1. trampoline 生成：`push rbp; mov rbp,rsp; push rbx/rsi/rdi/r12-r15;`
-   `sub rsp,0x50`（shadow+栈参数）; `sub rsp,8`（用户入口 16 字节对齐）;
-   `mov rcx,rec; [rec.active]=1; [rec.saved_rsp/rbp] 记录`;
-   `mov rax,<用户区>; call rax`（把用户代码当函数调用）
-2. 用户代码执行；`ret` 已被主程序引擎改写为"把网关地址写入 [rsp] 再 ret"
-   → 跳到网关 → `jmp [gate槽]` → 回到 **mid capture**；
-   用户不写 ret 则顺落入 mid capture（栈不平衡由 epilogue 归一修复）
-3. **mid capture**：push rcx/pushfq/push rax → 逐寄存器存入 rec.regs_mid
-   （lea 抓压栈前 rsp；栈序 pop 回填 flags/rax/rcx；还原被 scratch 占用的 rdx/rcx）
-4. （mode=call）`mov rsp,[rec.saved_rsp]` 归一 → 按 ABI 封送参数 → `call 目标`
-5. **final capture**：同 mid，存 rec.regs_final/flags_final
-6. epilogue：`mov rsp,[rec.saved_rsp]; add rsp,0x58; pop r15..rbp; ret`
-7. 工作线程 SetEvent → 主调线程等待（超时则放弃线程，标 TIMEOUT）
-
-### VEH 防崩溃
-
-- `AddVectoredExceptionHandler(1, ...)` 装为链首；执行线程经 TLS 定位当前 job
-- 异常发生时（rec.active==1）：
-  1. 快照完整 CONTEXT → rec.exc_regs/exc_flags/exc_rip + exc_code/exc_addr（AV 读写方向）
-  2. `ctx.Rip = 恢复桩; ctx.Rsp = rec.saved_rsp; ctx.Rbp = rec.saved_rbp`
-  3. 返回 EXCEPTION_CONTINUE_EXECUTION → **目标进程不崩溃**
-- 恢复桩与 epilogue 相同（active=0、栈归一、成对出栈、ret），异常状态由 rec.failed 标记
-
-### ret 网关（关键机制）
-
-naive 内联代码的 `ret` 槽与它自己发起调用的 home space（x64 shadow slot-0）重叠：
-被调函数（尤其 CLR 反向 P/Invoke thunk）会向 home space 溅射寄存器，破坏 ret 槽。
-因此主程序引擎在远程模式下把所有 `ret` 改写为：
+### 执行页布局（每次执行一页，0x1000 RWX）
 
 ```
-mov dword [rsp], gate_low32
-mov dword [rsp+4], gate_high32     ; 仅 x64
-ret
++0x0000  stub：VEH 联动记录（savedEsp/Rsp、flag=1、TEB 存锚）→ push 保存寄存器
+         → call [data+0]=用户码 → 结果经 VEH 块锚点重载指针后落 [data+8]
+         → 收尾段(epilogueOff)：flag=0 → ExitThread（桩永不 ret）
++0x0040  data 64B：[+0]=code指针 [+8]=result指针 [+0x10]=ExitThread [+0x18]=callTarget
++0x0080+ 用户机器码 + 末尾自动补 ret
 ```
 
-不占用任何寄存器；ret 跳到常驻页固定网关，网关 `jmp [槽]` 到本次执行的 mid capture。
+### 桩设计要点（全部实测教训）
 
-### 参数封送
+- **绝不依赖被调方的寄存器存活**：用户码/目标函数可能毁掉 ebx/edi（unepic 实测不保 edi），
+  结果落点指针从 VEH 块锚点 `[vehData+0x74]` 绝对寻址重载，不依赖 esp 也不依赖寄存器。
+- **x64 桩以 ExitThread 收尾，永不 ret**；`call [rbx+16]` 内存间接形式实测会崩 → 用寄存器间接。
+- **call 语义走"前奏"**：VEH 通道下 callTarget 拼进 userCode（寄存器赋参+call），>4 参数报 BadArg。
 
-- x64：args[0..3] → RCX/RDX/R8/R9（imm64 编入 trampoline）；args[4..7] → [rsp+0x20+8k]
-- x86：cdecl，args 从右向左 `push imm32`，调用后 `add esp, 4*n`
+### 会话线程识别（TEB 锚）
+
+桩入口把本线程 TEB（x86 `fs:[0x18]` / x64 `gs:[0x30]`）写入 VEH 块 `+0x68`。
+handler 入口先比对当前 TEB：**非会话线程的异常一律放行**（只计 seenForeign）——
+目标自身线程的合法内部异常（SEH/守卫页/C++ 异常）绝不被劫持、目标线程绝不被误杀。
+
+## 汇编 VEH handler（AsmVeh）
+
+### VEH 页布局
+
+```
++0x0000  handler 机器码（x86 stdcall ret 4 / x64 MSx64）
++0x0070  data 128B（布局见 AsmVeh.cs 头注释）
++0x00F0  regStub：push 1; push handler; call AVEH → 句柄存 data+0x20 → ExitThread
+```
+
+### x86 关键事实（真机探针实锤）
+
+- `EXCEPTION_POINTERS = { ER* +0, CTX* +4 }`（+8 是 x64 布局，勿照搬）
+- `CONTEXT.Eip=0xB8、Esp=0xC4`（0xB0 是 Eax、0xBC 是 SegCs）
+- handler 返回约定 **stdcall ret 4（0xC2 04 00）**——plain ret 会炸异常调度器，连 SEH 都走不到
+- 注册桩压栈顺序 **push handler 先、push 1 后**（stdcall 从右向左），反序会把 handler 指针登记成 1
+
+### 一次拦截的流程
+
+1. 入口记录仪（寄存器全部取自 CONTEXT，非 live 值）：code/rip/8 个 GPR/EFlags/AV 访问地址/读写方向
+   → data 块诊断槽
+2. 过滤：会话线程（TEB ✓）+ flag==1 + 异常码 ∈ 崩溃类（AV/非法指令/除零/栈溢出/断点…）
+3. OURS 路径：faultCount++、清 flag → `ctx.Eip = [data+0x18]`（桩收尾段）、
+   `ctx.Esp = savedEsp-12`（等效 3 push 仍在栈上）→ CONTINUE_EXECUTION
+4. 线程在收尾段 ExitThread 干净退出 → 宿主 Query 读回 faultCount/现场 → 目标进程存活
 
 ## C# 汇编引擎结构
 
@@ -87,27 +81,28 @@ Lexer（行切分/注释/数值）
         → 统一 Statement IR（Intel 顺序）
 Assembler（两遍: 首遍定尺寸/标签偏移+前向粘性 rel32；次遍产出字节；
            后向 rel8 溢出自动升级 rel32 重汇编）
-Encoder（REX/前缀/ModRM/SIB/位移/立即数/分支前向后向/moffs/SIB 绝对/ret 网关改写）
-TestVectors（137 条已知编码对照向量）
+Encoder（REX/前缀/ModRM/SIB/位移/立即数/分支前向后向/moffs/SIB 绝对）
+TestVectors（139 条已知编码对照向量）
 ```
 
-## 目标对象公开的符号
+## 测试目标（模拟未知环境）
 
-函数：`GameAddScore / GameGetScore / GameHeal / GameGetHealth / GameDamage /
-GameGetPos / GameSlowCall / GameCrashNow / VirtualProtect`
-数据：`g_score / g_hp / g_pos[3]`
+GameSharp 是**冒烟测试靶场**（托管形态，刻意贴近真实程序）：
 
-- TargetCpp：`extern "C" __declspec(dllexport)` 原生函数
-- TargetSharp：静态方法 → `UnmanagedFunctionPointer(Cdecl)` 委托 →
-  `GetFunctionPointerForDelegate` 原生指针（GCHandle 保活）；数据槽用 Pinned 数组
+- 与主程序**零共享**：不加载任何主程序组件，无注入、无管道、无导出协作
+- 内部方法**不导出**（真实游戏不会把内部地址给你），且方法地址由 JIT 运行时
+  产生、每次启动都可能不同——最恶劣的未知目标形态
+- 控制台只显示游戏状态本身（HP/Score），不显示任何地址
+- 真实可调用的符号来自**系统模块导出**（kernel32/ntdll/…，符号面板按模块载入）；
+  `{Symbol}` 占位符与 `call` 步骤均从该符号表解析
+
+方案脚本（Resources\Scheme\*.asmscheme）即按此原则组织：
+基础执行 / AT&T / x86 / AV 崩溃拦截 / 系统导出调用，全部不依赖目标内部符号。
 
 ## 工程与构建体系
 
-- **asmexecute.sln**（SharpDevelop/VS 均可打开）：4 个工程
-  - AsmStudio.csproj / TargetSharp.csproj — legacy C# csproj（ToolsVersion 4.0，
+- **asmexecute.sln**（SharpDevelop/VS 均可打开）：2 个工程
+  - AsmStudio.csproj / GameSharp.csproj — legacy C# csproj（ToolsVersion 4.0，
     TargetFrameworkVersion v4.0，无 targeting pack 时自动回退运行时目录程序集）
-  - AsmLibrary.vcxproj / TargetCpp.vcxproj — CppBinding 工程（IDE 内用 g++ 构建）
-- **命令行权威构建**（build.bat）：
-  - build-csharp.bat — in-box MSBuild v4.0.30319 编两个 csproj，产物聚合 bin\x64\
-  - build-native.bat — MCF GCC 双工具链 `-static` 静态链接，
-    产出 bin\x64\AsmLibrary.dll / bin\x86\AsmLibrary.dll（同名分目录）+ 双架构 TargetCpp.exe
+- **命令行权威构建**（build.bat）：in-box MSBuild v4.0.30319 编两个 csproj（x64=AnyCPU /
+  x86=Platform x86），产物聚合 bin\{Debug,Release}\{x64,x86}\；无任何 C/C++ 工具链依赖

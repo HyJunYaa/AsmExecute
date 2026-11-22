@@ -60,7 +60,6 @@ namespace AsmStudio
         	this.btnConnect = new System.Windows.Forms.ToolStripButton();
         	this.btnDisconnect = new System.Windows.Forms.ToolStripButton();
         	this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
-        	this.btnSymbols = new System.Windows.Forms.ToolStripButton();
         	this.cboSymbol = new System.Windows.Forms.ToolStripComboBox();
         	this.splitContainerMain = new System.Windows.Forms.SplitContainer();
         	this.splitLeft = new System.Windows.Forms.SplitContainer();
@@ -344,7 +343,6 @@ namespace AsmStudio
 			this.btnConnect,
 			this.btnDisconnect,
 			this.toolStripSeparator1,
-			this.btnSymbols,
 			this.cboSymbol});
         	this.toolbar.Location = new System.Drawing.Point(0, 24);
         	this.toolbar.Name = "toolbar";
@@ -379,8 +377,7 @@ namespace AsmStudio
         	this.cboChannel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         	this.cboChannel.Items.AddRange(new object[] {
 			"RemoteThread+VEH (no DLL)",
-			"Remote Thread (unprotected)",
-			"In-process (quick test)"});
+			"Remote Thread (unprotected)"});
         	this.cboChannel.Name = "cboChannel";
         	this.cboChannel.Size = new System.Drawing.Size(140, 25);
         	// 
@@ -404,17 +401,9 @@ namespace AsmStudio
         	// 
         	this.toolStripSeparator1.Name = "toolStripSeparator1";
         	this.toolStripSeparator1.Size = new System.Drawing.Size(6, 25);
-        	// 
-        	// btnSymbols
-        	// 
-        	this.btnSymbols.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
-        	this.btnSymbols.Name = "btnSymbols";
-        	this.btnSymbols.Size = new System.Drawing.Size(71, 22);
-        	this.btnSymbols.Text = "Refresh Symbols";
-        	this.btnSymbols.Click += new System.EventHandler(this.BtnSymbolsClick);
-        	// 
+        	//
         	// cboSymbol
-        	// 
+        	//
         	this.cboSymbol.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         	this.cboSymbol.Name = "cboSymbol";
         	this.cboSymbol.Size = new System.Drawing.Size(220, 25);
@@ -871,7 +860,6 @@ namespace AsmStudio
         private System.Windows.Forms.ToolStripButton btnConnect;
         private System.Windows.Forms.ToolStripButton btnDisconnect;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
-        private System.Windows.Forms.ToolStripButton btnSymbols;
         private System.Windows.Forms.ToolStripComboBox cboSymbol;
         private System.Windows.Forms.SplitContainer splitContainerMain;
         private System.Windows.Forms.SplitContainer splitLeft;

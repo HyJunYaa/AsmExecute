@@ -1,11 +1,9 @@
-// TargetSession.cs - 统一目标会话：三种执行通道的公共门面
+// TargetSession.cs - 统一目标会话：远程执行通道的公共门面
 //   RemoteThreadVeh 远程线程 + 汇编 VEH（无 DLL 注入，handler 由 AsmVeh 远程注册，主模式）
-//   RemoteThread   远程线程直调（兜底，无 VEH）
-//   InProcess      主程序本进程执行（直接 P/Invoke 自身架构的 AsmLibrary）
+//   RemoteThread    远程线程直调（兜底，无 VEH）
 using System;
 using AsmStudio.Localization;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 
 namespace AsmStudio.Remote
 {
@@ -18,26 +16,6 @@ namespace AsmStudio.Remote
 
         private AsmVehProtector _veh;   // RemoteThreadVeh 通道的汇编 VEH
 
-        // ---- 本进程 AsmLibrary 绑定 ----
-        private static bool _localInit;
-        private static LocalExec _localExec;
-
-        private delegate int LocalExec(byte[] code, UIntPtr codeLen, ulong[] args, int nargs,
-            IntPtr callTarget, uint timeout, IntPtr resultPtr);
-
-        private delegate int DllInstallVeh();
-        private delegate int DllRegSym([MarshalAs(UnmanagedType.LPStr)] string name, IntPtr addr);
-
-        [DllImport("kernel32", CharSet = CharSet.Ansi, SetLastError = true)]
-        private static extern IntPtr LoadLibrary(string name);
-        [DllImport("kernel32", CharSet = CharSet.Ansi, SetLastError = true)]
-        private static extern IntPtr GetProcAddress(IntPtr h, string name);
-
-        private static string LocalDllName
-        {
-            get { return "AsmLibrary.dll"; }   // x86/x64 同名分目录
-        }
-
         /// <summary>Connect目标</summary>
         public bool Connect(ProcessInfo target, ExecChannel channel)
         {
@@ -45,19 +23,7 @@ namespace AsmStudio.Remote
             Channel = channel;
             LastError = null;
 
-            if (channel == ExecChannel.InProcess)
-            {
-                if (!EnsureLocal())
-                {
-                    LastError = LanguageService.T("In-process mode needs ") + LocalDllName +
-                        " (same folder as the main exe, or on PATH)";
-                    return false;
-                }
-                Symbols.Clear();
-                return true;
-            }
-
-            // RemoteThread / RemoteThreadVeh: 做一次权限探测；VEH 通道还需远程安装汇编 handler
+            // 做一次权限探测；VEH 通道还需远程安装汇编 handler
             IntPtr h = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, target.Pid);
             if (h == IntPtr.Zero)
             {
@@ -85,19 +51,12 @@ namespace AsmStudio.Remote
         public ExecutionResult Execute(byte[] code, ulong[] args, int nargs,
             ulong callTarget, bool modeCall, int timeoutMs)
         {
-            if (Channel == ExecChannel.RemoteThread || Channel == ExecChannel.RemoteThreadVeh)
-            {
-                ExecutionResult r = RemoteThreadExecutor.Execute(Target, code, args, nargs,
-                    modeCall ? callTarget : 0, timeoutMs,
-                    Channel == ExecChannel.RemoteThreadVeh && _veh != null ? _veh.DataAddress : 0);
-                if (Channel == ExecChannel.RemoteThreadVeh && _veh != null)
-                    MergeVehOutcome(r, timeoutMs);
-                return r;
-            }
-            ExecutionResult nr = new ExecutionResult();
-            nr.Status = ExecStatus.NoConnection;
-            nr.Message = LanguageService.T("Not Connected");
-            return nr;
+            ExecutionResult r = RemoteThreadExecutor.Execute(Target, code, args, nargs,
+                modeCall ? callTarget : 0, timeoutMs,
+                Channel == ExecChannel.RemoteThreadVeh && _veh != null ? _veh.DataAddress : 0);
+            if (Channel == ExecChannel.RemoteThreadVeh && _veh != null)
+                MergeVehOutcome(r, timeoutMs);
+            return r;
         }
 
         /// <summary>汇编 VEH 通道：执行后读回data块，把拦截结果并入执行结果</summary>
@@ -119,9 +78,30 @@ namespace AsmStudio.Remote
                 r.ExcAddr = excAddr;
                 r.ExcRip = excRip;
                 r.ExcWasAccessViolation = excCode == 0xC0000005u || excCode == 0xC0000006u;
+                // 故障现场寄存器快照（handler 记录仪读回）
+                AsmVehProtector.VehSnapshot snap;
+                if (_veh.ReadSnapshot(out snap))
+                {
+                    Array.Copy(snap.Regs, r.RegsExc, RegIdx.Count);
+                    if (snap.Eflags >= 0) r.FlagsExc = (ulong)snap.Eflags;
+                    if (r.ExcWasAccessViolation && snap.ExcReadWrite >= 0)
+                        r.ExcReadOrWrite = snap.ExcReadWrite;
+                    if (excAddr == 0 && snap.ExcAddr != 0) r.ExcAddr = snap.ExcAddr;
+                }
                 r.Message = LanguageService.T("Assembly VEH caught exception ") + r.ExceptionName +
                     " (rip=0x" + excRip.ToString("X") +
-                    (excAddr != 0 ? ", addr=0x" + excAddr.ToString("X") : "") + ")";
+                    (r.ExcAddr != 0 ? ", addr=0x" + r.ExcAddr.ToString("X") : "") + ")";
+            }
+            else if (r.Status == ExecStatus.Ok)
+            {
+                // 本会话干净完成，但目标自身线程可能发生过异常（已放行）——提示给用户
+                AsmVehProtector.VehSnapshot snap;
+                if (_veh.ReadSnapshot(out snap) && snap.SeenForeign > 0)
+                {
+                    r.Message = LanguageService.T("RemoteThread+assembly VEH (no DLL)") +
+                        " | target threads raised " + snap.SeenForeign +
+                        " non-session exception(s), passed through";
+                }
             }
         }
 
@@ -151,114 +131,6 @@ namespace AsmStudio.Remote
             return s;
         }
 
-        /// <summary>InProcess 模式执行（走本地 asmhost_exec，完整 VEH 保护）</summary>
-        public ExecutionResult ExecuteLocal(byte[] code, ulong[] args, int nargs,
-            ulong callTarget, int timeoutMs)
-        {
-            ExecutionResult r = new ExecutionResult();
-            if (_localExec == null)
-            {
-                r.Status = ExecStatus.NoConnection;
-                r.Message = LanguageService.T("In-process AsmLibrary not loaded");
-                return r;
-            }
-            int size = Marshal.SizeOf(typeof(AsmHostResultFull));
-            IntPtr mem = Marshal.AllocHGlobal(size);
-            try
-            {
-                int status = _localExec(code, (UIntPtr)(code != null ? code.Length : 0),
-                    args, nargs,
-                    callTarget != 0 ? (IntPtr)(unchecked((long)callTarget)) : IntPtr.Zero,
-                    (uint)timeoutMs, mem);
-                r.Status = MapStatus(status);
-                AsmHostResultFull res = (AsmHostResultFull)Marshal.PtrToStructure(
-                    mem, typeof(AsmHostResultFull));
-                res.CopyRegs(r);
-                r.Message = LanguageService.T("In-process mode");
-                return r;
-            }
-            catch (Exception ex)
-            {
-                r.Status = ExecStatus.Internal;
-                r.Message = LanguageService.T("In-process execution exception: ") + ex.Message;
-                return r;
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(mem);
-            }
-        }
-
-        private static bool EnsureLocal()
-        {
-            if (_localInit) return _localExec != null;
-            _localInit = true;
-
-            IntPtr h = LoadLibrary(LocalDllName);
-            if (h == IntPtr.Zero) return false;
-            IntPtr pExec = GetProcAddress(h, "asmhost_exec");
-            if (pExec == IntPtr.Zero) return false;
-            _localExec = (LocalExec)Marshal.GetDelegateForFunctionPointer(
-                pExec, typeof(LocalExec));
-            return true;
-        }
-
-        /// <summary>本进程安装 VEH（InProcess 模式建议调用一次）</summary>
-        public static bool InstallLocalVeh()
-        {
-            IntPtr h = LoadLibrary(LocalDllName);
-            if (h == IntPtr.Zero) return false;
-            IntPtr p = GetProcAddress(h, "asmhost_install_veh");
-            if (p == IntPtr.Zero) return false;
-            DllInstallVeh f = (DllInstallVeh)Marshal.GetDelegateForFunctionPointer(
-                p, typeof(DllInstallVeh));
-            return f() >= 0;
-        }
-
-        /// <summary>本进程注册符号（InProcess 模式使用）</summary>
-        public static bool RegisterLocalSymbol(string name, IntPtr addr)
-        {
-            IntPtr h = LoadLibrary(LocalDllName);
-            if (h == IntPtr.Zero) return false;
-            IntPtr p = GetProcAddress(h, "asmhost_register_symbol");
-            if (p == IntPtr.Zero) return false;
-            DllRegSym f = (DllRegSym)Marshal.GetDelegateForFunctionPointer(p, typeof(DllRegSym));
-            return f(name, addr) >= 0;
-        }
-
-        /// <summary>本进程演示符号（InProcess 模式的快速试验目标）</summary>
-        public void LoadInProcessDemoSymbols()
-        {
-            _demoAdd = DemoAdd;
-            _demoEcho = DemoEcho;
-            RegisterLocalSymbol("DemoAdd",
-                Marshal.GetFunctionPointerForDelegate(_demoAdd));
-            RegisterLocalSymbol("DemoEcho",
-                Marshal.GetFunctionPointerForDelegate(_demoEcho));
-        }
-
-        private static DemoAddDel _demoAdd;
-        private static DemoEchoDel _demoEcho;
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate int DemoAddDel(int a, int b);
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate IntPtr DemoEchoDel(IntPtr p);
-        private static int DemoAdd(int a, int b) { return a + b; }
-        private static IntPtr DemoEcho(IntPtr p) { return p; }
-
-        private static ExecStatus MapStatus(int s)
-        {
-            switch (s)
-            {
-                case 0: return ExecStatus.Ok;
-                case 1: return ExecStatus.Exception;
-                case 2: return ExecStatus.Timeout;
-                case 3: return ExecStatus.BadArg;
-                case 4: return ExecStatus.Busy;
-                default: return ExecStatus.Internal;
-            }
-        }
-
         public void Dispose()
         {
             if (_veh != null)
@@ -266,56 +138,6 @@ namespace AsmStudio.Remote
                 _veh.Dispose();
                 _veh = null;
             }
-        }
-    }
-
-    /// <summary>asmhost_result 的完整 C# 镜像（布局与 asmhost.h 一致）</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct AsmHostResultFull
-    {
-        public int status;
-        public ulong ret_value;
-        public ulong regs_mid0, regs_mid1, regs_mid2, regs_mid3,
-                     regs_mid4, regs_mid5, regs_mid6, regs_mid7,
-                     regs_mid8, regs_mid9, regs_mid10, regs_mid11,
-                     regs_mid12, regs_mid13, regs_mid14, regs_mid15;
-        public ulong regs_final0, regs_final1, regs_final2, regs_final3,
-                     regs_final4, regs_final5, regs_final6, regs_final7,
-                     regs_final8, regs_final9, regs_final10, regs_final11,
-                     regs_final12, regs_final13, regs_final14, regs_final15;
-        public ulong flags_mid;
-        public ulong flags_final;
-        public ulong exc0, exc1, exc2, exc3, exc4, exc5, exc6, exc7,
-                     exc8, exc9, exc10, exc11, exc12, exc13, exc14, exc15;
-        public ulong exc_flags;
-        public uint exc_code;
-        public ulong exc_addr;
-        public int exc_was_av;
-        public int exc_rw;
-        public ulong exc_rip;
-
-        public void CopyRegs(ExecutionResult r)
-        {
-            ulong[] mid = new ulong[] { regs_mid0, regs_mid1, regs_mid2, regs_mid3,
-                regs_mid4, regs_mid5, regs_mid6, regs_mid7, regs_mid8, regs_mid9,
-                regs_mid10, regs_mid11, regs_mid12, regs_mid13, regs_mid14, regs_mid15 };
-            ulong[] fin = new ulong[] { regs_final0, regs_final1, regs_final2, regs_final3,
-                regs_final4, regs_final5, regs_final6, regs_final7, regs_final8,
-                regs_final9, regs_final10, regs_final11, regs_final12, regs_final13,
-                regs_final14, regs_final15 };
-            ulong[] exc = new ulong[] { exc0, exc1, exc2, exc3, exc4, exc5, exc6, exc7,
-                exc8, exc9, exc10, exc11, exc12, exc13, exc14, exc15 };
-            Array.Copy(mid, r.RegsMid, RegIdx.Count);
-            Array.Copy(fin, r.RegsFinal, RegIdx.Count);
-            Array.Copy(exc, r.RegsExc, RegIdx.Count);
-            r.FlagsMid = flags_mid;
-            r.FlagsFinal = flags_final;
-            r.FlagsExc = exc_flags;
-            r.ExcCode = exc_code;
-            r.ExcAddr = exc_addr;
-            r.ExcWasAccessViolation = exc_was_av != 0;
-            r.ExcReadOrWrite = exc_rw;
-            r.ExcRip = exc_rip;
         }
     }
 }

@@ -1,5 +1,5 @@
-// RemoteSymbols.cs - 无管道符号源：远程模块枚举 + PE 导出表解析
-// 用途：RemoteThreadVeh / RemoteThread 通道（目标无 AsmLibrary）下，
+// RemoteSymbols.cs - 远程符号源：模块枚举 + PE 导出表解析
+// 用途：RemoteThreadVeh / RemoteThread 通道下，
 //       从目标进程内存直接解析各模块的导出表（EAT），获得 API 名称 → 远程地址，
 //       供"调用目标/参数/符号表"功能使用，全程 OpenProcess + ReadProcessMemory，
 //       不注入任何内容。

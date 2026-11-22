@@ -8,6 +8,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <!-- Debug/Release 均为纯窗体（独立控制台已移除，日志在主窗口"执行日志"页） -->
     <OutputType>WinExe</OutputType>
+    <!-- exe 级 Win32 图标：任务栏/资源管理器/快捷方式用（运行时 Form.Icon 仅管窗口标题） -->
+    <ApplicationIcon>Resources\Icons\app.ico</ApplicationIcon>
     <RootNamespace>AsmStudio</RootNamespace>
     <AssemblyName>AsmStudio</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>

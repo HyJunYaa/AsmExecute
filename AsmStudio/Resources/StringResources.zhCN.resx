@@ -96,9 +96,6 @@
   <data name="Disconnect" xml:space="preserve">
     <value>断开</value>
   </data>
-  <data name="Refresh Symbols" xml:space="preserve">
-    <value>刷新符号表</value>
-  </data>
   <data name="Syntax Style" xml:space="preserve">
     <value>语法风格</value>
   </data>
@@ -147,11 +144,26 @@
   <data name="AsmStudio ready. Usage:" xml:space="preserve">
     <value>AsmStudio 就绪。使用步骤:</value>
   </data>
-  <data name="  1. Start a target (bin\Debug\x64\TargetCpp.exe or TargetSharp.exe)" xml:space="preserve">
-    <value>  1. 启动目标程序（bin\Debug\x64\TargetCpp.exe 或 TargetSharp.exe）</value>
+  <data name="  1. Start a target (bin\Debug\x64\GameSharp.exe, or your own process)" xml:space="preserve">
+    <value>  1. 启动目标程序（bin\Debug\x64\GameSharp.exe 或你自己的进程）</value>
   </data>
   <data name="  2. Click [Scan Processes], pick a target, then Connect" xml:space="preserve">
     <value>  2. 点击【扫描进程】并选择目标 → 连接</value>
+  </data>
+  <data name="&amp;Close" xml:space="preserve">
+    <value>关闭(&amp;C)</value>
+  </data>
+  <data name="&amp;Save This" xml:space="preserve">
+    <value>单独保存(&amp;S)</value>
+  </data>
+  <data name="Close &amp;Others" xml:space="preserve">
+    <value>关闭其他(&amp;O)</value>
+  </data>
+  <data name="Close &amp;All" xml:space="preserve">
+    <value>全部关闭(&amp;A)</value>
+  </data>
+  <data name="&amp;Clear Log" xml:space="preserve">
+    <value>清空日志(&amp;L)</value>
   </data>
   <data name="  3. Edit assembly → Validate → Execute / call target function" xml:space="preserve">
     <value>  3. 编辑汇编 → 验证 → 执行 / 调用目标函数</value>
@@ -272,6 +284,9 @@
   </data>
   <data name=" exports: " xml:space="preserve">
     <value> 导出 API: </value>
+  </data>
+  <data name=" exports: 0 (module has no exported APIs)" xml:space="preserve">
+    <value> 导出 API: 0（该模块无导出）</value>
   </data>
   <data name=" (select an API to fill the call target)" xml:space="preserve">
     <value>（选择 API 即填入调用目标）</value>
