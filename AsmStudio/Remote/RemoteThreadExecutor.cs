@@ -41,25 +41,44 @@ namespace AsmStudio.Remote
                 ulong stubCallTarget = callTarget;
                 if (vehData != 0 && callTarget != 0)
                 {
-                    // 汇编 VEH 通道: call 语义改由"调用前奏"实现（寄存器赋参 + call 目标），
-                    // 前奏拼接在用户码之前；不用 stub 的 callTarget 分支（vehData!=0 时恒 0）。
-                    // 参数 > 4 个暂不支持（x64 栈参数需在 call 帧 +0x20 处布置，前奏无法提供）。
-                    if (nargs > 4)
-                    {
-                        r.Status = ExecStatus.BadArg;
-                        r.Message = "汇编 VEH 通道远程 call 暂只支持 4 个以内参数";
-                        return r;
-                    }
+                    // 汇编 VEH 通道: call 语义改由"调用后奏"实现（赋参 + call 目标），
+                    // 拼接在用户码之后（与 asmhost.h/PipeDll 语义一致: 先执行 code 再 call 目标）；
+                    // 不用 stub 的 callTarget 分支（vehData!=0 时恒 0）。
+                    // 后奏必须按目标架构生成——x64 用寄存器赋参（最多 4 个，栈参数无法布置）；
+                    // x86 用 cdecl 压栈（从右向左 + 调用方清栈），原版只写了 x64 字节，
+                    // x86 目标上 mode=call 会把 x64 机器码当 x86 执行。
                     List<byte> pre = new List<byte>();
-                    if (nargs > 0) { pre.AddRange(new byte[] { 0x48, 0xB9 }); AddQ(pre, args[0]); }  // movabs rcx
-                    if (nargs > 1) { pre.AddRange(new byte[] { 0x48, 0xBA }); AddQ(pre, args[1]); }  // movabs rdx
-                    if (nargs > 2) { pre.AddRange(new byte[] { 0x49, 0xB8 }); AddQ(pre, args[2]); }  // movabs r8
-                    if (nargs > 3) { pre.AddRange(new byte[] { 0x49, 0xB9 }); AddQ(pre, args[3]); }  // movabs r9
-                    pre.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(pre, callTarget);                  // movabs rax, target
-                    pre.AddRange(new byte[] { 0xFF, 0xD0 });                                         // call rax
-                    byte[] codeBuf = new byte[pre.Count + (code != null ? code.Length : 0) + 1];
-                    Array.Copy(pre.ToArray(), codeBuf, pre.Count);
-                    if (code != null) Array.Copy(code, 0, codeBuf, pre.Count, code.Length);
+                    if (is64)
+                    {
+                        if (nargs > 4)
+                        {
+                            r.Status = ExecStatus.BadArg;
+                            r.Message = "汇编 VEH 通道远程 call 暂只支持 4 个以内参数（x64）";
+                            return r;
+                        }
+                        if (nargs > 0) { pre.AddRange(new byte[] { 0x48, 0xB9 }); AddQ(pre, args[0]); }  // movabs rcx
+                        if (nargs > 1) { pre.AddRange(new byte[] { 0x48, 0xBA }); AddQ(pre, args[1]); }  // movabs rdx
+                        if (nargs > 2) { pre.AddRange(new byte[] { 0x49, 0xB8 }); AddQ(pre, args[2]); }  // movabs r8
+                        if (nargs > 3) { pre.AddRange(new byte[] { 0x49, 0xB9 }); AddQ(pre, args[3]); }  // movabs r9
+                        pre.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(pre, callTarget);                  // movabs rax, target
+                        pre.AddRange(new byte[] { 0xFF, 0xD0 });                                         // call rax
+                    }
+                    else
+                    {
+                        for (int i = nargs - 1; i >= 0; i--)
+                        { pre.Add(0x68); AddD(pre, (uint)args[i]); }                                 // push imm32（从右向左）
+                        pre.Add(0xB8); AddD(pre, (uint)callTarget);                                  // mov eax, target
+                        pre.AddRange(new byte[] { 0xFF, 0xD0 });                                     // call eax
+                        if (nargs > 0)
+                        {
+                            int bytes = 4 * nargs;                                                   // 调用方清栈
+                            if (bytes <= 127) pre.AddRange(new byte[] { 0x83, 0xC4, (byte)bytes });
+                            else { pre.AddRange(new byte[] { 0x81, 0xC4 }); AddD(pre, (uint)bytes); }
+                        }
+                    }
+                    byte[] codeBuf = new byte[(code != null ? code.Length : 0) + pre.Count + 1];
+                    if (code != null) Array.Copy(code, 0, codeBuf, 0, code.Length);
+                    Array.Copy(pre.ToArray(), 0, codeBuf, code != null ? code.Length : 0, pre.Count);
                     codeBuf[codeBuf.Length - 1] = 0xC3;
                     userCode = codeBuf;
                     stubCallTarget = 0;

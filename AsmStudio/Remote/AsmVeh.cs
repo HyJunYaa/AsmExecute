@@ -354,6 +354,8 @@ namespace AsmStudio.Remote
         {
             Emitter e = new Emitter();
             e.Bytes(0x8B, 0x44, 0x24, 0x04);                   // mov eax, [esp+4]      EXCEPTION_POINTERS*
+            e.Bytes(0x8B, 0x15); e.Abs32((long)dataAddr);      // mov edx, [DATA]       flag（入口快照，x64 版同款诊断）
+            e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x4C);   // mov [DATA+0x4C], edx  flagSeen
             e.Bytes(0x8B, 0x08);                               // mov ecx, [eax]        ExceptionRecord*
             e.Bytes(0x8B, 0x11);                               // mov edx, [ecx]        ExceptionCode
             e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x38);   // mov [DATA+0x38], edx  lastSeenCode
@@ -375,6 +377,8 @@ namespace AsmStudio.Remote
             e.Bytes(0xC2, 0x04, 0x00);             // ret 4（stdcall，实测：plain ret 会炸调度器，连 SEH 都走不到）
             e.Label("ours");
             e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 8);  // mov [DATA+8], edx     lastExcCode
+            e.Bytes(0x8B, 0x51, 0x18);                         // mov edx, [ecx+0x18]   ER->Information[1]（x86 ER 布局，AV 时=访问地址）
+            e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x28);   // mov [DATA+0x28], edx  excAddr（x64 版同款）
             e.Bytes(0xFF, 0x05); e.Abs32((long)dataAddr + 4);  // inc dword [DATA+4]    faultCount++
             e.Bytes(0xC7, 0x05); e.Abs32((long)dataAddr); e.Imm32(0);  // mov dword [DATA], 0
             e.Bytes(0x8B, 0x44, 0x24, 0x04);                   // mov eax, [esp+4]      EP
