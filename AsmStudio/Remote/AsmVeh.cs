@@ -8,7 +8,7 @@
 //   +0x00 u32 flag        1 = 本会话代码运行中
 //   +0x04 u32 faultCount  拦截次数
 //   +0x08 u32 lastExcCode 最近拦截的异常码
-//   +0x0C x86 u32 faultEsp    异常时 CONTEXT.Esp（取自 CONTEXT，非 handler live esp）
+//   +0x0C x86 u32 faultEsp    异常时 CONTEXT.Esp（取自 CONTEXT，非 handler live esp）| x64 u32 excRW（读写方向）
 //   +0x10 u64 savedRsp    运行桩入口 RSP（桩写入；x86 仅用低 32 位）
 //   +0x18 u64 abortRip    恢复桩地址（桩写入）
 //   +0x20 u64 vehHandle   AddVectoredExceptionHandler 返回值
@@ -28,7 +28,8 @@
 //   +0x64 int excRW       ExceptionInformation[0]（0=读 1=写 8=DEP，非 AV 无意义）
 //   +0x68 u64 ourTeb      会话线程 TEB（桩入口写 fs:[0x18]/gs:[0x30]；0=未运行）
 //   +0x6C u32 seenForeign (x86) 外线程异常计数 | x64 同槽被 ourTeb 占用
-//   +0x70 u32 seenForeign (x64) 外线程异常计数（handler 放行时 ++）
+//   +0x70 u32 seenForeign (x64) 外线程异常计数（handler 放行时 ++；勿写 +0x6C——那是 ourTeb 高半）
+//   +0x74 u64/x86 u32 dataAnchor  数据块指针锚点（stub 写入，用户码毁寄存器后重载用）
 using System;
 using System.Collections.Generic;
 
@@ -239,7 +240,7 @@ namespace AsmStudio.Remote
                 s.Regs[RegIdx.Rax] = BitConverter.ToUInt64(buf, 0x50);
                 s.Regs[RegIdx.Rcx] = BitConverter.ToUInt64(buf, 0x58);
                 s.Regs[RegIdx.Rbx] = BitConverter.ToUInt64(buf, 0x60);
-                s.ExcReadWrite = (int)BitConverter.ToUInt64(buf, 0x64);
+                s.ExcReadWrite = (int)BitConverter.ToUInt32(buf, 0x0C);   // excRW u32@0x0C（与 handler 写入槽位一致）
             }
             else
             {
@@ -382,7 +383,7 @@ namespace AsmStudio.Remote
             e.Bytes(0x49, 0x8B, 0x52, 0x68);                   // mov rdx, [r9+0x68]   会话线程 TEB（桩写入）
             e.Bytes(0x48, 0x39, 0xD0);                         // cmp rax, rdx
             e.JeRel8("ours_go");
-            e.Bytes(0x41, 0xFF, 0x41, 0x6C);                   // inc dword [r9+0x6C]  seenForeign++
+            e.Bytes(0x41, 0xFF, 0x41, 0x70);                   // inc dword [r9+0x70]  seenForeign++（x64 槽位 @0x70；原写 @0x6C 落在 ourTeb 高半，会破坏会话线程校验）
             e.Bytes(0x31, 0xC0);                               // xor eax, eax
             e.Bytes(0xC3);                                     // ret（foreign: CONTINUE_SEARCH）
             e.Label("ours_go");
@@ -403,7 +404,7 @@ namespace AsmStudio.Remote
             e.Bytes(0x48, 0x8B, 0x91, 0x90, 0x00, 0x00, 0x00); // mov rdx, [rcx+0x90]   ctx.Rbx
             e.Bytes(0x49, 0x89, 0x51, 0x60);                   // mov [r9+0x60], rdx    faultRbx
             e.Bytes(0x48, 0x8B, 0x50, 0x20);                   // mov rdx, [rax+0x20]   ER.ExceptionInformation[0]（0=读 1=写）
-            e.Bytes(0x49, 0x89, 0x51, 0x64);                   // mov [r9+0x64], rdx    excRW
+            e.Bytes(0x41, 0x89, 0x51, 0x0C);                   // mov dword [r9+0x0C], edx  excRW（u32@0x0C：x64 空闲槽。原 8 字节写 @0x64 会越过 faultRbx 高半并清掉 ourTeb 低半）
             e.Bytes(0x41, 0xFF, 0x41, 0x48);                   // inc dword [r9+0x48]   seenCount
             e.Bytes(0x8B, 0x10);                               // mov edx, [rax]        恢复 ExceptionCode（被 rip 记录覆写）
             e.Bytes(0x41, 0x83, 0x39, 0x00);                   // cmp dword [r9], 0

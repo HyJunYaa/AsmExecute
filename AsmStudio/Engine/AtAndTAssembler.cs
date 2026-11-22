@@ -166,6 +166,22 @@ namespace AsmStudio.Engine
                     }
                 }
             }
+
+            // 分支助记符的裸符号操作数 = 跳转目标标签（GAS 里 je ok / jmp done 的前向引用
+            // 是纯标签，不是 "disp=symbol" 的内存）。解析器默认把裸符号当内存，这里按助记符
+            // 纠正为 LabelOp；带 '*' 间接（call *foo）仍保留内存语义走间接调用。
+            if (stmt.Mnemonic != null && stmt.Operands.Count == 1)
+            {
+                bool isBranch = stmt.Mnemonic == "jmp" || stmt.Mnemonic == "call" ||
+                    stmt.Mnemonic.StartsWith("j") || stmt.Mnemonic.StartsWith("loop");
+                Operand bop = stmt.Operands[0];
+                if (isBranch && bop.Kind == OperandKind.Memory && bop.Mem != null &&
+                    bop.Mem.DispSymbol != null && bop.Mem.BaseReg < 0 &&
+                    bop.Mem.IndexReg < 0 && !bop.Indirect)
+                {
+                    stmt.Operands[0] = Operand.LabelOp(bop.Mem.DispSymbol);
+                }
+            }
             return true;
         }
 

@@ -47,7 +47,9 @@ namespace AsmStudio.Schemes
 
             if (root.TryGetValue("steps", out v))
             {
-                object[] steps = (object[])v;
+                // JavaScriptSerializer 反序列化嵌套 JSON 数组时给的是 ArrayList 而非 object[]
+                // （.NET 4.8 实测），直接强转会在加载方案时抛 InvalidCastException。
+                object[] steps = AsObjectArray(v);
                 foreach (object so in steps)
                 {
                     Dictionary<string, object> d = (Dictionary<string, object>)so;
@@ -65,7 +67,7 @@ namespace AsmStudio.Schemes
                     }
                     if (d.TryGetValue("args", out v))
                     {
-                        object[] arr = (object[])v;
+                        object[] arr = AsObjectArray(v);
                         st.Args = new string[arr.Length];
                         for (int i = 0; i < arr.Length; i++) st.Args[i] = arr[i].ToString();
                     }
@@ -73,6 +75,16 @@ namespace AsmStudio.Schemes
                 }
             }
             return scheme;
+        }
+
+        /// <summary>兼容 JavaScriptSerializer 的数组形态（object[] 或 ArrayList）→ object[]</summary>
+        private static object[] AsObjectArray(object v)
+        {
+            object[] arr = v as object[];
+            if (arr != null) return arr;
+            System.Collections.ArrayList al = v as System.Collections.ArrayList;
+            if (al != null) return al.ToArray();
+            return new object[0];
         }
 
         /// <summary>扫描目录下全部方案文件</summary>

@@ -115,7 +115,7 @@ namespace AsmStudio.Schemes
             if (modeCall)
             {
                 ulong symAddr;
-                if (symbols.TryGet(st.Call, out symAddr))
+                if (symbols.TryGet(st.Call, out symAddr) || TryGetBySuffix(symbols, st.Call, out symAddr))
                     callAddr = symAddr;
                 else
                 {
@@ -127,6 +127,16 @@ namespace AsmStudio.Schemes
                     else
                         ulong.TryParse(t, System.Globalization.NumberStyles.HexNumber, null, out parsed);
                     callAddr = parsed;
+                }
+                // mode=call 但符号/地址都无法解析：干净报错（否则 callTarget=0 会让桩
+                // 跳过用户码写入、执行到未写零页，滑进 DEP AV）
+                if (callAddr == 0)
+                {
+                    ExecutionResult err = new ExecutionResult();
+                    err.Status = ExecStatus.BadArg;
+                    err.Message = "call target not resolved: " + st.Call +
+                        " (load module exports first)";
+                    return err;
                 }
             }
 
@@ -176,6 +186,8 @@ namespace AsmStudio.Schemes
         {
             if (source.IndexOf('{') < 0) return source;
             StringBuilder sb = new StringBuilder(source);
+            // 先做模块限定键（kernel32.dll!GetCurrentProcessId）的精确替换，
+            // 再对剩余 {裸名} 占位符按 "!裸名" 后缀匹配导出表键（导出表键带模块前缀）
             foreach (KeyValuePair<string, ulong> kv in symbols.Items)
             {
                 string token = "{" + kv.Key + "}";
@@ -184,7 +196,34 @@ namespace AsmStudio.Schemes
                 while ((idx = sb.ToString().IndexOf(token, StringComparison.OrdinalIgnoreCase)) >= 0)
                     sb.Remove(idx, token.Length).Insert(idx, rep);
             }
+            foreach (KeyValuePair<string, ulong> kv in symbols.Items)
+            {
+                int bang = kv.Key.LastIndexOf('!');
+                if (bang < 0) continue;
+                string bare = kv.Key.Substring(bang + 1);
+                string token = "{" + bare + "}";
+                string rep = "0x" + kv.Value.ToString("x");
+                int idx;
+                while ((idx = sb.ToString().IndexOf(token, StringComparison.OrdinalIgnoreCase)) >= 0)
+                    sb.Remove(idx, token.Length).Insert(idx, rep);
+            }
             return sb.ToString();
+        }
+
+        /// <summary>精确键未命中时按 "!裸名" 后缀匹配（导出表键带模块前缀）</summary>
+        private static bool TryGetBySuffix(SymbolTable symbols, string name, out ulong addr)
+        {
+            addr = 0;
+            string want = "!" + name.Trim();
+            foreach (KeyValuePair<string, ulong> kv in symbols.Items)
+            {
+                if (kv.Key.EndsWith(want, StringComparison.OrdinalIgnoreCase))
+                {
+                    addr = kv.Value;
+                    return true;
+                }
+            }
+            return false;
         }
 
         internal static SyntaxKind ParseSyntax(string s)

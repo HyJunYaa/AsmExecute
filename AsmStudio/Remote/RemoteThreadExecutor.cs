@@ -16,7 +16,7 @@ namespace AsmStudio.Remote
         /* data 布局 (x64): +0 code, +8 result, +16 ExitThread, +24 target;
          * args 由 stub 内 imm 直接编码 */
 
-        /// <summary>诊Disconnect关: true 时把生成的 stub/veh data转储到 %TEMP%\asmstub.bin</summary>
+        /// <summary>诊断开关: true 时把生成的 stub/veh data转储到 %TEMP%\asmstub.bin</summary>
         public static bool DumpStub;
 
         public static ExecutionResult Execute(ProcessInfo target, byte[] code,
@@ -147,23 +147,27 @@ namespace AsmStudio.Remote
                 UIntPtr written;
                 if (!NativeInterop.WriteProcessMemory(proc, remote, stub, (UIntPtr)stub.Length, out written))
                 { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(stub) FAILED"; return r; }
-                if (DumpStub)
-                {
-                    byte[] dbg = new byte[stub.Length + 64];
-                    Array.Copy(stub, dbg, stub.Length);
-                    Array.Copy(data, 0, dbg, stub.Length, 64);
-                    System.IO.File.WriteAllBytes(
-                        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "asmstub.bin"), dbg);
-                    System.IO.File.WriteAllText(
-                        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "asmstub.txt"),
-                        "stubLen=" + stub.Length + " blob=0x" + remote.ToInt64().ToString("X") +
-                        " epilogueOff=" + epilogueOff + " dataBase=0x" + dataBase.ToInt64().ToString("X"));
-                }
                 if (!NativeInterop.WriteProcessMemory(proc, dataBase, data, (UIntPtr)DATA_SIZE, out written))
                 { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(data) FAILED"; return r; }
                 if (userCode.Length > 1 &&
                     !NativeInterop.WriteProcessMemory(proc, codeBase, userCode, (UIntPtr)userCode.Length, out written))
                 { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(code) FAILED"; return r; }
+                if (DumpStub)
+                {
+                    // 全量转储（stub+data+userCode 均已写入），供离线反汇编核对
+                    byte[] dbg = new byte[stub.Length + DATA_SIZE + userCode.Length];
+                    Array.Copy(stub, dbg, stub.Length);
+                    Array.Copy(data, 0, dbg, stub.Length, DATA_SIZE);
+                    if (userCode.Length > 0)
+                        Array.Copy(userCode, 0, dbg, stub.Length + DATA_SIZE, userCode.Length);
+                    System.IO.File.WriteAllBytes(
+                        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "asmstub.bin"), dbg);
+                    System.IO.File.WriteAllText(
+                        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "asmstub.txt"),
+                        "stubLen=" + stub.Length + " blob=0x" + remote.ToInt64().ToString("X") +
+                        " epilogueOff=" + epilogueOff + " dataBase=0x" + dataBase.ToInt64().ToString("X") +
+                        " codeBase=0x" + codeBase.ToInt64().ToString("X") + " codeLen=" + userCode.Length);
+                }
 
                 // CreateRemoteThread: 参数 = data 地址
                 IntPtr tid;
@@ -218,7 +222,7 @@ namespace AsmStudio.Remote
         /* ---- x64 stub ----
          * rbx = data(rcx)；
          * [rbx+0]=code, [rbx+8]=result, [rbx+16]=ExitThread, [rbx+24]=target
-         * 顺序: VEH 联动记录 → 执Row code（若有）→ call target → 存 rax → 清 flag → ExitThread(0) */
+         * 顺序: VEH 联动记录 → 执行 code（若有）→ call target → 存 rax → 清 flag → ExitThread(0) */
         private static byte[] BuildStubX64(int codeLen, ulong[] args, int nargs, ulong callTarget,
             ulong vehData, ulong exitThread, out int epilogueOff)
         {
@@ -236,7 +240,10 @@ namespace AsmStudio.Remote
             s.AddRange(new byte[] { 0x48, 0x89, 0xCB });        // mov rbx, rcx   数据块指针
             if (vehData != 0)
             {
-                s.AddRange(new byte[] { 0x49, 0x89, 0x53, 0x74 });         // mov [r10+0x74], rbx 数据块指针存锚点
+                // ModRM 0x5A = mod01, reg=011(rbx 源), rm=010+REX.B(r10 目标)：
+                // 原误编码 0x53 = reg=010(rdx), rm=011+REX.B(r11) → mov [r11+0x74], rdx，
+                // r11 恒为 0 → 写地址 0x74 → AV，用户码结果永远写不进结果槽。
+                s.AddRange(new byte[] { 0x49, 0x89, 0x5A, 0x74 });         // mov [r10+0x74], rbx 数据块指针存锚点
             }
             s.Add(0x53);                       // push rbx
             s.Add(0x57);                       // push rdi
