@@ -9,7 +9,7 @@ namespace AsmStudio.Engine
     internal static class IntelParser
     {
         /// <summary>
-        /// 解析一Row Intel 汇编。成功返回 true 并填充 stmt。
+        /// 解析一行 Intel 汇编。成功返回 true 并填充 stmt。
         /// stmt.LabelDef 允许为空；空行/纯注释/纯标签行时 Mnemonic 可为 null。
         /// </summary>
         public static bool ParseLine(string line, int lineNo, Statement stmt, List<AsmError> errors)
@@ -388,7 +388,19 @@ namespace AsmStudio.Engine
                     // 单项: 寄存器 / 数字 / 符号
                     InstructionTables.RegInfo ri;
                     long num;
-                    if (Lexer.ReadIdent(t, 0) == t && InstructionTables.TryGetReg(t, out ri))
+                    // [rip+label] 与 [rel label] 同义（mod=00 rm=101 disp32）；rip 不是可编码的基址寄存器，
+                    // 必须先于通用寄存器判定识别，否则会落进 "Unknown address term"。
+                    if (string.Equals(t, "rip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (negative)
+                        {
+                            errCol = term.Value;
+                            errors.Add(new AsmError(lineNo, term.Value, "rip term cannot be negative"));
+                            return false;
+                        }
+                        mem.RipRelative = true;
+                    }
+                    else if (Lexer.ReadIdent(t, 0) == t && InstructionTables.TryGetReg(t, out ri))
                     {
                         if (negative)
                         {

@@ -17,7 +17,7 @@ namespace AsmStudio.Engine
             List<AsmError> errors = result.Errors;
             if (text == null) text = string.Empty;
 
-            // ---- 解析所有Row → Statements ----
+            // ---- 解析所有行 → Statements ----
             List<Statement> stmts;
             if (!ParseAll(text, options, errors, out stmts))
             {

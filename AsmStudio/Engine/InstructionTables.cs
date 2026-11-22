@@ -48,7 +48,9 @@ namespace AsmStudio.Engine
             for (int i = 0; i < 8; i++)
             {
                 _regs[lo8[i]] = new RegInfo(i, 1, i >= 4);      // ah/ch/dh/bh 为高字节寄存器
-                if (i < 4) _regs[lo8x[i]] = new RegInfo(i, 1, false);
+                // spl/bpl/sil/dil 的编码是 4..7（不是 0..3！0..3 是 al/cl/dl/bl），
+                // 旧表写成 i 会让 "mov spl,1" 静默编成 "mov al,1"。
+                if (i < 4) _regs[lo8x[i]] = new RegInfo(i + 4, 1, false);
                 _regs[lo16[i]] = new RegInfo(i, 2, false);
                 _regs[lo32[i]] = new RegInfo(i, 4, false);
                 _regs[lo64[i]] = new RegInfo(i, 8, false);

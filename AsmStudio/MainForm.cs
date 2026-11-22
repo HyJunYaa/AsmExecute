@@ -1,4 +1,4 @@
-// MainForm.cs - 主窗口逻辑：多文档汇编编辑 / 逐行校验 / 汇编 / 远程执Row / 方案运行
+// MainForm.cs - 主窗口逻辑：多文档汇编编辑 / 逐行校验 / 汇编 / 远程执行 / 方案运行
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -28,6 +28,7 @@ namespace AsmStudio
         private readonly List<SchemeFile> _schemes = new List<SchemeFile>();
         private TargetSession _session;
         private SymbolTable _symbolTable = new SymbolTable();
+        private bool _executing;          // 后台执行中（重入保护，同时禁用执行按钮）
         private int _newDocCounter = 1;
         private string _initialTemplate;   // 构造时（语言加载前）的默认模板，用于启动后重翻
 
@@ -806,6 +807,7 @@ namespace AsmStudio
         {
             _symbolTable.Clear();
             _remoteExports.Clear();
+            if (_session != null) _session.Symbols.Clear();
             _remoteModules = RemoteSymbols.EnumModules(_session.Target.Pid);
             cboSymbol.Items.Clear();
             foreach (RemoteSymbols.ModuleInfo m in _remoteModules)
@@ -833,6 +835,7 @@ namespace AsmStudio
                 // 该模块无导出 → 记录并回退模块列表视图（避免空下拉）
                 Log("[+] " + m.Name + T(" exports: 0 (module has no exported APIs)"));
                 _symbolTable.Clear();
+                _session.Symbols.Clear();   // 与 UI 符号表保持一致，避免方案运行器用到上一个模块的旧地址
                 _remoteExports.Clear();
                 cboSymbol.Items.Clear();
                 foreach (RemoteSymbols.ModuleInfo mm in _remoteModules)
@@ -843,9 +846,16 @@ namespace AsmStudio
             }
             _symbolTable.Clear();
             cboSymbol.Items.Clear();
+            // 方案运行器（SchemeRunner）只认 _session.Symbols，UI 侧 _symbolTable 它看不到，
+            // 因此这里必须双写：漏写会导致 {GetCurrentProcessId} 之类的占位符永远解析失败。
+            _session.Symbols.Clear();
             foreach (SymbolInfo s in _remoteExports)
             {
-                if (s.Address != 0) _symbolTable.Add(s.Name, s.Address);
+                if (s.Address != 0)
+                {
+                    _symbolTable.Add(s.Name, s.Address);
+                    _session.Symbols.Add(new SymbolInfo { Name = s.Name, Address = s.Address });
+                }
                 cboSymbol.Items.Add(s.ToString());
             }
             _symbolMode = 2;
@@ -921,7 +931,7 @@ namespace AsmStudio
             ValidateCurrent();
         }
 
-        // ================= 校验 / 汇编 / 执Row =================
+        // ================= 校验 / 汇编 / 执行 =================
 
         private void EditorTextChangedDelayed(object sender, EventArgs e)
         {
@@ -960,12 +970,13 @@ namespace AsmStudio
             if (doc == null || lstErrors.SelectedIndex < 0) return;
             string text = lstErrors.SelectedItem as string;
             if (text == null) return;
+            // 前缀是本地化字符串（"Row " / "行 "），长度不能写死
             int li = text.IndexOf(T("Row "));
             int lineNo = 0;
             if (li >= 0)
             {
                 StringBuilder num = new StringBuilder();
-                for (int i = li + 2; i < text.Length && char.IsDigit(text[i]); i++)
+                for (int i = li + T("Row ").Length; i < text.Length && char.IsDigit(text[i]); i++)
                     num.Append(text[i]);
                 int.TryParse(num.ToString(), out lineNo);
             }
@@ -1053,8 +1064,47 @@ namespace AsmStudio
 
             Log("======== Execute (" + result.Code.Length + T(" bytes, ") +
                 (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) + ") ========");
-            ExecutionResult r = _session.Execute(result.Code, args, nargs, callTarget, modeCall, timeout);
-            ShowResult(r);
+
+            /* 远程执行要等目标线程（默认 3s 超时，死循环就等满）——放到线程池跑，
+             * 期间界面保持响应；_executing 兼作重入保护（防止连点重复注入）。 */
+            if (_executing)
+            {
+                Log("[!] " + T("Previous execution still running — request ignored"));
+                return;
+            }
+            TargetSession sess = _session;
+            byte[] code = result.Code;
+            _executing = true;
+            btnExecute.Enabled = false;
+            lblStatus.Text = T("Executing...");
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                ExecutionResult rr;
+                try
+                {
+                    rr = sess.Execute(code, args, nargs, callTarget, modeCall, timeout);
+                }
+                catch (Exception ex)
+                {
+                    rr = new ExecutionResult();
+                    rr.Status = ExecStatus.Internal;
+                    rr.Message = "execute threw: " + ex.Message;
+                }
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        _executing = false;
+                        btnExecute.Enabled = true;
+                        lblStatus.Text = T("Ready");
+                        ShowResult(rr);
+                    });
+                }
+                catch (InvalidOperationException)
+                {
+                    // 窗口已关闭，结果无处可送
+                }
+            });
         }
 
         private void ShowResult(ExecutionResult r)
@@ -1104,14 +1154,14 @@ namespace AsmStudio
                 sb.AppendLine("Exception EFLAGS: 0x" + r.FlagsExc.ToString("X"));
                 sb.AppendLine();
             }
-            sb.AppendLine("== After user code executed (pre-call) ==");
-            AppendRegs(sb, "regs_mid", r.RegsMid);
-            sb.AppendLine("EFLAGS: 0x" + r.FlagsMid.ToString("X"));
-            sb.AppendLine();
-            sb.AppendLine("== Final registers ==");
-            AppendRegs(sb, "regs_final", r.RegsFinal);
-            sb.AppendLine("EFLAGS: 0x" + r.FlagsFinal.ToString("X"));
-            sb.AppendLine();
+            if (r.Status == ExecStatus.Ok)
+            {
+                // 快照由桩在"用户码执行后、call target 前"写入；异常/超时路径没有这份现场
+                sb.AppendLine("== After user code executed (pre-call) ==");
+                sb.AppendLine("   (rbx/rcx/rdi = tool internals here: data block / VEH block / result slot)");
+                AppendRegs(sb, "regs_mid", r.RegsMid);
+                sb.AppendLine();
+            }
             sb.AppendLine("Return value RAX = 0x" + r.RetValue.ToString("X") +
                 "  (" + ((long)r.RetValue).ToString() + ")");
             return sb.ToString();
@@ -1151,23 +1201,24 @@ namespace AsmStudio
         {
             string[] texts = { txtArg0.Text, txtArg1.Text, txtArg2.Text, txtArg3.Text };
             args = new ulong[4];
-            nargs = 0;
-            foreach (string t in texts)
+            // 尾部空框表示"不传该参数"：若按 4 个全算，x86 目标会多压/多清 16 字节栈，
+            // 被调函数读到的参数值也会整体偏移。空框只在"中间"时才补 0。
+            int last = -1;
+            for (int i = 0; i < texts.Length; i++)
+                if (!string.IsNullOrEmpty((texts[i] ?? "").Trim())) last = i;
+            nargs = last + 1;
+            for (int i = 0; i < nargs; i++)
             {
-                string s = (t ?? "").Trim();
+                string s = (texts[i] ?? "").Trim();
                 ulong v = 0;
-                if (s.Length == 0)
-                {
-                    args[nargs++] = 0;
-                    continue;
-                }
-                if (_symbolTable.TryGet(s, out v)) { args[nargs++] = v; continue; }
+                if (s.Length == 0) { args[i] = 0; continue; }
+                if (_symbolTable.TryGet(s, out v)) { args[i] = v; continue; }
                 bool hex = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
                 if (hex)
                     ulong.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out v);
                 else
                     ulong.TryParse(s, out v);
-                args[nargs++] = v;
+                args[i] = v;
             }
         }
 

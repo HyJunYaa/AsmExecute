@@ -13,11 +13,23 @@ namespace AsmStudio.Remote
 {
     internal static class RemoteThreadExecutor
     {
-        /* data 布局 (x64): +0 code, +8 result, +16 ExitThread, +24 target;
+        /* data 布局 (x64): +0 code, +8 result, +16 ExitThread, +24 target, +32 结果槽;
+         * SNAP_OFF(0x80) 起为"用户码执行后、call target 前"的寄存器快照:
+         *   x64: 16 个 GPR 各 8 字节（0x80..0xFF）
+         *   x86: 8 个 GPR 各 4 字节（0x80..0x9F）
          * args 由 stub 内 imm 直接编码 */
+
+        /// <summary>data 块内寄存器快照区偏移</summary>
+        internal const int SNAP_OFF = 0x80;
+        /// <summary>data 块总长（前缀区 + 快照区）</summary>
+        internal const int DATA_SIZE = 0x100;
 
         /// <summary>诊断开关: true 时把生成的 stub/veh data转储到 %TEMP%\asmstub.bin</summary>
         public static bool DumpStub;
+
+        /// <summary>环境变量开关（ASMSTUDIO_DUMP_STUB=1）：无需改动代码即可现场抓桩字节</summary>
+        private static readonly bool DumpStubFromEnv =
+            Environment.GetEnvironmentVariable("ASMSTUDIO_DUMP_STUB") == "1";
 
         public static ExecutionResult Execute(ProcessInfo target, byte[] code,
             ulong[] args, int nargs, ulong callTarget, int timeoutMs, ulong vehData)
@@ -35,6 +47,7 @@ namespace AsmStudio.Remote
 
             IntPtr remote = IntPtr.Zero;
             IntPtr thread = IntPtr.Zero;
+            bool keepPage = false;   // 超时: 远程线程可能仍在页内取指，此时绝不可释放该页
             try
             {
                 // 远程memory: [stub][DATA_SIZE data][user code + ret]
@@ -106,7 +119,6 @@ namespace AsmStudio.Remote
                     ? BuildStubX64(userCode.Length, args, nargs, stubCallTarget, vehData, exitThread, out epilogueOff)
                     : BuildStubX86(userCode.Length, args, nargs, stubCallTarget, vehData, exitThread, out epilogueOff);
 
-                const int DATA_SIZE = 64;
                 int total = stub.Length + DATA_SIZE + userCode.Length;
 
                 remote = NativeInterop.VirtualAllocEx(proc, IntPtr.Zero, (UIntPtr)total,
@@ -152,7 +164,7 @@ namespace AsmStudio.Remote
                 if (userCode.Length > 1 &&
                     !NativeInterop.WriteProcessMemory(proc, codeBase, userCode, (UIntPtr)userCode.Length, out written))
                 { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(code) FAILED"; return r; }
-                if (DumpStub)
+                if (DumpStub || DumpStubFromEnv)
                 {
                     // 全量转储（stub+data+userCode 均已写入），供离线反汇编核对
                     byte[] dbg = new byte[stub.Length + DATA_SIZE + userCode.Length];
@@ -184,8 +196,12 @@ namespace AsmStudio.Remote
                     timeoutMs <= 0 ? NativeInterop.INFINITE : (uint)timeoutMs);
                 if (wait != 0 /* WAIT_OBJECT_0 */)
                 {
+                    /* 超时不代表线程已停：它可能仍在执行页内用户码并会继续取指/写结果槽。
+                     * 释放该页 = 让目标线程在自己脚下踩空（AV → 目标进程可能被拖死）。
+                     * 页与 data 一起故意泄漏，等线程自行退出/目标进程结束后由系统回收。 */
+                    keepPage = true;
                     r.Status = ExecStatus.Timeout;
-                    r.Message = LanguageService.T("Remote thread timed out (thread still running, not terminated)");
+                    r.Message = LanguageService.T("Remote thread timed out (thread still running; execution page intentionally leaked)");
                     return r;
                 }
 
@@ -202,13 +218,26 @@ namespace AsmStudio.Remote
                 r.Status = ExecStatus.Ok;
                 r.RetValue = BitConverter.ToUInt64(resultBuf, 0);
                 r.RegsFinal[RegIdx.Rax] = r.RetValue;
+
+                // 读回寄存器快照（桩在 call target 前写入：x64 16×8，x86 8×4）
+                int snapLen = is64 ? 128 : 32;
+                byte[] snap = new byte[snapLen];
+                if (NativeInterop.ReadProcessMemory(proc,
+                        new IntPtr(dataBase.ToInt64() + SNAP_OFF), snap, (UIntPtr)snapLen, out read))
+                {
+                    int n = is64 ? RegIdx.Count : 8;
+                    for (int i = 0; i < n; i++)
+                        r.RegsMid[i] = is64
+                            ? BitConverter.ToUInt64(snap, i * 8)
+                            : (ulong)BitConverter.ToUInt32(snap, i * 4);
+                }
                 r.Message = vehData != 0 ? LanguageService.T("RemoteThread+assembly VEH (no DLL)") : LanguageService.T("RemoteThread mode");
                 return r;
             }
             finally
             {
                 if (thread != IntPtr.Zero) NativeInterop.CloseHandle(thread);
-                if (remote != IntPtr.Zero)
+                if (remote != IntPtr.Zero && !keepPage)
                     NativeInterop.VirtualFreeEx(proc, remote, UIntPtr.Zero, NativeInterop.MEM_RELEASE);
                 NativeInterop.CloseHandle(proc);
             }
@@ -267,6 +296,9 @@ namespace AsmStudio.Remote
                 s.AddRange(new byte[] { 0x48, 0x8B, 0x5C, 0x24, 0x10 });   // mov rbx, [rsp+16]（无 VEH，尽力而为）
                 s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });               // mov rdi, [rbx+8]
             }
+            /* 用户码执行后、call target 前的寄存器快照：只有 "mov [rbx+disp32], reg"，
+             * 不碰栈、不改任何寄存器值，因此不影响后续赋参与调用。 */
+            AppendSnapStore64(s);
             if (callTarget != 0)
             {
                 if (nargs > 0) { s.AddRange(new byte[] { 0x48, 0xB9 }); AddQ(s, args[0]); }   // mov rcx
@@ -344,6 +376,8 @@ namespace AsmStudio.Remote
                 s.AddRange(new byte[] { 0x8B, 0x5C, 0x24, 0x08 });   // mov ebx, [esp+8]（无 VEH，尽力而为）
                 s.AddRange(new byte[] { 0x8B, 0x7B, 0x08 });         // mov edi, [ebx+8]
             }
+            /* 用户码执行后、call target 前的寄存器快照（同 x64：只写内存，不动寄存器/栈） */
+            AppendSnapStore32(s);
             if (callTarget != 0)
             {
                 for (int i = nargs - 1; i >= 0; i--)
@@ -373,6 +407,52 @@ namespace AsmStudio.Remote
             s.Add(0xB8); AddD(s, (uint)exitThread);              // mov eax, ExitThread
             s.AddRange(new byte[] { 0xFF, 0xD0 });               // call eax（不返回）
             return s.ToArray();
+        }
+
+        /* ---- 寄存器快照写入 ----
+         * 统一形式 mov [rbx/ebx + disp32], reg（mod=10, rm=011），disp 即 data 块内偏移。
+         * x64 的 ModRM 字节 = 0x80 | (reg<<3) | 3：rax→0x83 rcx→0x8B rdx→0x93 rbx→0x9B
+         *                                        rsp→0xA3 rbp→0xAB rsi→0xB3 rdi→0xBB
+         * r8..r15 仅 reg 字段扩展位不同（REX.R=1 → 0x4C），ModRM 字节相同。 */
+        private static void AppendSnapStore64(System.Collections.Generic.List<byte> s)
+        {
+            SnapStore(s, 0x48, 0x83, SNAP_OFF + 0x00);   // mov [rbx+..], rax
+            SnapStore(s, 0x48, 0x8B, SNAP_OFF + 0x08);   // mov [rbx+..], rcx
+            SnapStore(s, 0x48, 0x93, SNAP_OFF + 0x10);   // mov [rbx+..], rdx
+            SnapStore(s, 0x48, 0x9B, SNAP_OFF + 0x18);   // mov [rbx+..], rbx
+            SnapStore(s, 0x48, 0xA3, SNAP_OFF + 0x20);   // mov [rbx+..], rsp
+            SnapStore(s, 0x48, 0xAB, SNAP_OFF + 0x28);   // mov [rbx+..], rbp
+            SnapStore(s, 0x48, 0xB3, SNAP_OFF + 0x30);   // mov [rbx+..], rsi
+            SnapStore(s, 0x48, 0xBB, SNAP_OFF + 0x38);   // mov [rbx+..], rdi
+            SnapStore(s, 0x4C, 0x83, SNAP_OFF + 0x40);   // mov [rbx+..], r8
+            SnapStore(s, 0x4C, 0x8B, SNAP_OFF + 0x48);   // mov [rbx+..], r9
+            SnapStore(s, 0x4C, 0x93, SNAP_OFF + 0x50);   // mov [rbx+..], r10
+            SnapStore(s, 0x4C, 0x9B, SNAP_OFF + 0x58);   // mov [rbx+..], r11
+            SnapStore(s, 0x4C, 0xA3, SNAP_OFF + 0x60);   // mov [rbx+..], r12
+            SnapStore(s, 0x4C, 0xAB, SNAP_OFF + 0x68);   // mov [rbx+..], r13
+            SnapStore(s, 0x4C, 0xB3, SNAP_OFF + 0x70);   // mov [rbx+..], r14
+            SnapStore(s, 0x4C, 0xBB, SNAP_OFF + 0x78);   // mov [rbx+..], r15
+        }
+
+        private static void AppendSnapStore32(System.Collections.Generic.List<byte> s)
+        {
+            SnapStore(s, 0x00, 0x83, SNAP_OFF + 0x00);   // mov [ebx+..], eax
+            SnapStore(s, 0x00, 0x8B, SNAP_OFF + 0x04);   // mov [ebx+..], ecx
+            SnapStore(s, 0x00, 0x93, SNAP_OFF + 0x08);   // mov [ebx+..], edx
+            SnapStore(s, 0x00, 0x9B, SNAP_OFF + 0x0C);   // mov [ebx+..], ebx
+            SnapStore(s, 0x00, 0xA3, SNAP_OFF + 0x10);   // mov [ebx+..], esp
+            SnapStore(s, 0x00, 0xAB, SNAP_OFF + 0x14);   // mov [ebx+..], ebp
+            SnapStore(s, 0x00, 0xB3, SNAP_OFF + 0x18);   // mov [ebx+..], esi
+            SnapStore(s, 0x00, 0xBB, SNAP_OFF + 0x1C);   // mov [ebx+..], edi
+        }
+
+        private static void SnapStore(System.Collections.Generic.List<byte> s, byte rex, byte modrm, int disp)
+        {
+            if (rex != 0) s.Add(rex);
+            s.Add(0x89);
+            s.Add(modrm);
+            s.Add((byte)disp); s.Add((byte)(disp >> 8));
+            s.Add((byte)(disp >> 16)); s.Add((byte)(disp >> 24));
         }
 
         private static void AddQ(System.Collections.Generic.List<byte> s, ulong v)

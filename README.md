@@ -48,9 +48,10 @@ VEH 保护原理说明：向量化异常处理是**每进程独立**的机制；
 - x86/x64 保护模式编码；**Intel（NASM 风格）与 AT&T（GAS 风格）双语法**
 - ~90 条常用指令：mov/lea/push/pop/xchg、算术逻辑组、移位组、jcc/call/jmp/setcc、
   串操作、bt 组、数据定义 db/dw/dd/dq、标签（两遍汇编，前向 rel32 / 后向 rel8 自动选择）
-- 完整 ModRM/SIB 寻址、RIP 相对、`[abs]` SIB 绝对寻址、moffs 特殊形、fs/gs 段前缀、lock/rep 前缀
+- 完整 ModRM/SIB 寻址、RIP 相对（`[rel lab]` / `[rip+lab]` / `lab(%rip)` 三种写法）、`[abs]` SIB 绝对寻址、moffs 特殊形、fs/gs 段前缀、lock/rep 前缀
+- 低字节寄存器 `spl/bpl/sil/dil`（自动补空 REX 前缀；与 `ah/ch/dh/bh` 混用时报错而非静默错码）
 - 符号表解析（目标模块导出 API 地址注入）
-- **内置 139 条编码自检向量**（菜单 工具→自检），当前全部通过
+- **内置 149 条编码自检向量**（菜单 工具→自检），当前全部通过
 
 ## 文档
 

@@ -146,12 +146,19 @@ namespace AsmStudio.Engine
                 return false;
             }
 
-            // AT&T 源在前 → 归一化为 Intel 顺序（dst, src）
+            // AT&T 操作数从右到左书写（最后一个才是目标）→ 归一化为 Intel 顺序（dst 在最前）。
+            // 三操作数同样整体反序：imulq $3, %rax, %rbx → imul rbx, rax, 3
             if (stmt.Operands.Count == 2)
             {
                 Operand tmp = stmt.Operands[0];
                 stmt.Operands[0] = stmt.Operands[1];
                 stmt.Operands[1] = tmp;
+            }
+            else if (stmt.Operands.Count == 3)
+            {
+                Operand tmp = stmt.Operands[0];
+                stmt.Operands[0] = stmt.Operands[2];
+                stmt.Operands[2] = tmp;
             }
 
             // 尺寸后缀 → 未声明尺寸的memory操作数
@@ -412,15 +419,17 @@ namespace AsmStudio.Engine
             string basePart = parts[0].Trim();
             if (basePart.Length > 0)
             {
-                InstructionTables.RegInfo ri;
-                if (InstructionTables.TryGetRegAtt(basePart, out ri))
+                // %rip 不在通用寄存器表里（它不是可编码的基址寄存器），必须先单独识别，
+                // 否则 label(%rip) 会直接落到 "Invalid base part"。
+                if (string.Equals(basePart, "%rip", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (ri.Size == 8 && string.Equals(basePart, "%rip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        mem.RipRelative = true;
-                        mem.BaseReg = -1;
-                    }
-                    else
+                    mem.RipRelative = true;
+                    mem.BaseReg = -1;
+                }
+                else
+                {
+                    InstructionTables.RegInfo ri;
+                    if (InstructionTables.TryGetRegAtt(basePart, out ri))
                     {
                         if (ri.Size != 4 && ri.Size != 8)
                         {
@@ -429,11 +438,11 @@ namespace AsmStudio.Engine
                         }
                         mem.BaseReg = ri.Index;
                     }
-                }
-                else
-                {
-                    errors.Add(new AsmError(lineNo, 1, "Invalid base part: " + basePart));
-                    return false;
+                    else
+                    {
+                        errors.Add(new AsmError(lineNo, 1, "Invalid base part: " + basePart));
+                        return false;
+                    }
                 }
             }
             if (parts.Length >= 2)

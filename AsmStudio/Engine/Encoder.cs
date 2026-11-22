@@ -33,6 +33,8 @@ namespace AsmStudio.Engine
         private int _stmtIndex;
         private Statement _cur;
         private int _startOffset;        // 本指令起始偏移（缓冲区内）
+        private bool _needRex;           // 本语句含 spl/bpl/sil/dil（Index 4..7 的 8 位寄存器）
+        private bool _highByteReg;       // 本语句含 ah/ch/dh/bh
 
         public Encoder(ArchKind arch, ulong baseAddress, SymbolTable symbols,
             IDictionary<string, ulong> labels, HashSet<string> allLabelNames,
@@ -59,6 +61,7 @@ namespace AsmStudio.Engine
             try
             {
                 if (st.Mnemonic == null) return _buf.ToArray();
+                ScanByteRegisters(st);
                 EncodeCore(st);
             }
             finally
@@ -103,6 +106,26 @@ namespace AsmStudio.Engine
         private void Fail(string msg)
         {
             throw new EncodeException(_cur.Line, _cur.Column, msg);
+        }
+
+        /* 扫描本语句的 8 位寄存器：spl/bpl/sil/dil 与 ah/ch/dh/bh 共用同一套 ModRM 编码，
+         * 前者必须靠 REX 前缀把 4..7 号编码重定向到低字节，后者则要求"没有 REX"。
+         * 旧版只看 RexBit（只有 Index>=8 才置位），于是 spl/bpl/sil/dil 静默编成 ah/ch/dh/bh。 */
+        private void ScanByteRegisters(Statement st)
+        {
+            _needRex = false;
+            _highByteReg = false;
+            foreach (Operand o in st.Operands)
+            {
+                if (o == null || o.Kind != OperandKind.Register) continue;
+                Reg r = o.Reg;
+                if (r.Size != 1) continue;
+                if (r.High) _highByteReg = true;
+                else if (r.Index >= 4) _needRex = true;
+            }
+            if (!_needRex) return;
+            if (!IsX64) Fail("spl/bpl/sil/dil are only available on x64");
+            if (_highByteReg) Fail("cannot mix AH/CH/DH/BH with SPL/BPL/SIL/DIL in one instruction");
         }
 
         // ==================== 操作数辅助 ====================
@@ -167,8 +190,10 @@ namespace AsmStudio.Engine
             }
             if (_allLabelNames != null && _allLabelNames.Contains(name))
             {
-                isInternal = false;     // 前向占位（base 检查延后到有真实值的一遍）
-                value = 0;
+                // 前向内部标签：第 1 遍还没登记偏移，按 0 占位（尺寸固定，下一遍取真实值）。
+                // 这里必须仍标记为 internal，否则 [rel fwd] 会被当成"外部符号"直接报错。
+                isInternal = true;
+                value = _base;
                 return true;
             }
             isInternal = false;
@@ -222,7 +247,8 @@ namespace AsmStudio.Engine
                 if (rexR != 0) { rex |= 4; any = true; }
                 if (rexX != 0) { rex |= 2; any = true; }
                 if (rexB != 0) { rex |= 1; any = true; }
-                if (any) Emit((byte)rex);
+                // 0x40（空 REX）不改变编码，但它是 spl/bpl/sil/dil 的唯一表达方式
+                if (any || _needRex) Emit((byte)rex);
             }
         }
 
@@ -254,7 +280,9 @@ namespace AsmStudio.Engine
                     Fail("Undefined symbol: '" + m.DispSymbol + "'");
                 if (!internalLabel)
                     Fail("[rel] is only valid for internal labels (for external symbols use mov+register indirection or [abs])");
-                long rel = (long)v - (long)_base - (long)(_startOffset + _buf.Count + 4);
+                // 下一条指令地址 = 起始 + 已发射字节 + ModRM(1) + disp32(4)；
+                // 这里 _buf.Count 只含 REX/opcode，漏掉 ModRM 会整体偏 1（原实现 +4）。
+                long rel = (long)v - (long)_base - (long)(_startOffset + _buf.Count + 5);
                 Emit((byte)(0x05 | (regField3 << 3)));
                 EmitDword(rel);
                 return;

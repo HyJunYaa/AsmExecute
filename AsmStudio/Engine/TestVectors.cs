@@ -178,6 +178,23 @@ namespace AsmStudio.Engine
             v.Add(new Vector(I, X64, "lab:\n  je lab", "74 FE"));
             v.Add(new Vector(I, X64, "  call GameAdd\nGameAdd: ret", "E8 00 00 00 00 C3"));
 
+            // ============ RIP 相对（三种写法等价）============
+            v.Add(new Vector(I, X64, "mov rax, [rel lab]\nlab: ret", "48 8B 05 00 00 00 00 C3"));
+            v.Add(new Vector(I, X64, "mov rax, [rip+lab]\nlab: ret", "48 8B 05 00 00 00 00 C3"));
+            v.Add(new Vector(A, X64, "movq lab(%rip), %rax\nlab: ret", "48 8B 05 00 00 00 00 C3"));
+            // 非零位移：disp = 目标 - 下一条指令地址（验证 ModRM 字节没有被漏算）
+            v.Add(new Vector(I, X64, "mov eax, [rel lab]\n nop\nlab: ret", "8B 05 01 00 00 00 90 C3"));
+
+            // ============ 低字节寄存器（spl/bpl/sil/dil 必须带 REX）============
+            v.Add(new Vector(I, X64, "mov spl, 1", "40 B4 01"));
+            v.Add(new Vector(I, X64, "movzx eax, sil", "40 0F B6 C6"));
+            v.Add(new Vector(I, X64, "mov sil, al", "40 88 C6"));
+            v.Add(new Vector(I, X64, "mov ah, bl", "88 DC"));       // 高字节寄存器绝不能带 REX
+
+            // ============ 三操作数 imul（Intel / AT&T 互转后仍可回编）============
+            v.Add(new Vector(I, X64, "imul rbx, rax, 3", "48 6B D8 03"));
+            v.Add(new Vector(A, X64, "imulq $3, %rax, %rbx", "48 6B D8 03"));
+
             return v;
         }
 

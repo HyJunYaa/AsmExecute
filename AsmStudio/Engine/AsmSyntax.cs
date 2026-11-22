@@ -6,14 +6,14 @@ using System.Text;
 
 namespace AsmStudio.Engine
 {
-    /// <summary>汇编Syntax Style</summary>
+    /// <summary>汇编语法风格</summary>
     public enum SyntaxKind
     {
         Intel,   // mov eax, [ebx+esi*4+8] / mov dword ptr [x], 5
         Att      // movl 0x8(%esi,%ebx,4), %eax / movq $5, %rax
     }
 
-    /// <summary>Target Arch</summary>
+    /// <summary>目标架构</summary>
     public enum ArchKind
     {
         X86,     // 32 位

@@ -56,7 +56,7 @@ namespace AsmStudio.Engine
                 body = body.Substring(0, cPos).Trim();
             }
 
-            // 标签Row / 伪指令Row / 纯注释：原样保留
+            // 标签行 / 伪指令行 / 纯注释：原样保留
             if (body.Length == 0 || body.EndsWith(":") ||
                 body.StartsWith(".") || body.StartsWith("#"))
                 return line;
@@ -225,10 +225,12 @@ namespace AsmStudio.Engine
                 if (newOps.Count == 2) { string t = newOps[0]; newOps[0] = newOps[1]; newOps[1] = t; }
                 else if (newOps.Count == 3)
                 {
-                    // imul dst, src1, src2 → src1, src2, dst
-                    string dst = newOps[0];
-                    newOps.RemoveAt(0);
-                    newOps.Add(dst);
+                    // Intel dst, src1, src2 → AT&T 整体反序 src2, src1, dst
+                    // （imul dst, src, imm 的正确 GAS 形式是 imul $imm, %src, %dst，
+                    //   旧版只把 dst 挪到末尾会得到 "%src, $imm, %dst"，回编必报错）
+                    string t = newOps[0];
+                    newOps[0] = newOps[2];
+                    newOps[2] = t;
                 }
                 return true;
             }
@@ -280,9 +282,10 @@ namespace AsmStudio.Engine
                 if (newOps.Count == 2) { string t = newOps[0]; newOps[0] = newOps[1]; newOps[1] = t; }
                 else if (newOps.Count == 3)
                 {
-                    string dst = newOps[newOps.Count - 1];
-                    newOps.RemoveAt(newOps.Count - 1);
-                    newOps.Insert(0, dst);
+                    // AT&T src2, src1, dst → Intel dst, src1, src2（整体反序）
+                    string t = newOps[0];
+                    newOps[0] = newOps[2];
+                    newOps[2] = t;
                 }
                 // 有后缀信息 → 当其它操作数均无data寄存器（尺寸不可推断）时给memory操作数补 ptr
                 if (srcL2.Length > 0)

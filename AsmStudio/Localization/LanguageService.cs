@@ -29,12 +29,38 @@ namespace AsmStudio.Localization
             }
         }
 
-        private static readonly ResourceManager _rmEn = new ResourceManager(
+        private static ResourceManager _rmEn = new ResourceManager(
             "AsmStudio.StringResources", typeof(LanguageService).Assembly);
-        private static readonly ResourceManager _rmZhCn = new ResourceManager(
+        private static ResourceManager _rmZhCn = new ResourceManager(
             "AsmStudio.StringResources.zhCN", typeof(LanguageService).Assembly);
-        private static readonly ResourceManager _rmZhHant = new ResourceManager(
-            "AsmStudio.StringResources.zhHant", typeof(LanguageService).Assembly);
+        // zhHant 资源集当前未内嵌（csproj 只有 StringResources 与 .zhCN），
+        // 这里保持惰性 + 容错：真到要用繁体时不会抛 MissingManifestResourceException，
+        // 而是自动回退英文基准。
+        private static ResourceManager _rmZhHant;
+        private static bool _zhHantProbed;
+
+        private static ResourceManager ZhHant
+        {
+            get
+            {
+                if (!_zhHantProbed)
+                {
+                    _zhHantProbed = true;
+                    try
+                    {
+                        ResourceManager rm = new ResourceManager(
+                            "AsmStudio.StringResources.zhHant", typeof(LanguageService).Assembly);
+                        rm.GetString("__probe__");   // 触发资源集加载；缺失时在此抛出
+                        _rmZhHant = rm;
+                    }
+                    catch
+                    {
+                        _rmZhHant = null;
+                    }
+                }
+                return _rmZhHant;
+            }
+        }
 
         private static readonly List<LanguageDef> _languages = new List<LanguageDef>
         {
@@ -63,7 +89,7 @@ namespace AsmStudio.Localization
             switch (CurrentCulture)
             {
                 case "zhCN": rm = _rmZhCn; break;
-                case "zhHant": rm = _rmZhHant; break;
+                case "zhHant": rm = ZhHant ?? _rmEn; break;
                 default: rm = _rmEn; break;
             }
             string v = rm.GetString(key);

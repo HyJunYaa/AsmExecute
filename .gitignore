@@ -6,3 +6,18 @@ obj/
 .vs/
 *.user
 *.suo
+
+# 运行期产物 / 日志
+debug.log
+*.log
+language.ini
+
+# 自检/诊断生成的临时二进制
+tools/selftest/*.exe
+tools/selftest/*.pdb
+
+# 构建生成的低层 app.config（源码文件名应为 App.config）
+*/app.config
+
+# 本地会话数据
+.workbuddy/

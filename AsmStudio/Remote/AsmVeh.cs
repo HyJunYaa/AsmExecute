@@ -480,13 +480,13 @@ namespace AsmStudio.Remote
             e.Bytes(0x8B, 0x8A, 0xA4, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xA4]   ctx.Ebx
             e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x3C);   // mov [DATA+0x3C], ecx  faultEbx
             e.Bytes(0x8B, 0x8A, 0xA8, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xA8]   ctx.Edx
-            e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x50);   // mov [DATA+0x50], ecx  faultEdx
+            e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x50);   // mov [DATA+0x50], ecx  faultEdx
             e.Bytes(0x8B, 0x8A, 0xA0, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xA0]   ctx.Esi
-            e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x54);   // mov [DATA+0x54], ecx  faultEsi
+            e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x54);   // mov [DATA+0x54], ecx  faultEsi
             e.Bytes(0x8B, 0x8A, 0x9C, 0x00, 0x00, 0x00);       // mov ecx, [edx+0x9C]   ctx.Edi
-            e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x58);   // mov [DATA+0x58], ecx  faultEdi
+            e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x58);   // mov [DATA+0x58], ecx  faultEdi
             e.Bytes(0x8B, 0x8A, 0xB4, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xB4]   ctx.Ebp
-            e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x5C);   // mov [DATA+0x5C], ecx  faultEbp
+            e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x5C);   // mov [DATA+0x5C], ecx  faultEbp
             e.Bytes(0x8B, 0x8A, 0xC0, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xC0]   ctx.EFlags
             e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x60);   // mov [DATA+0x60], ecx  faultEflags
             e.Bytes(0x8B, 0x0D); e.Abs32((long)dataAddr);      // mov ecx, [DATA]       flagSeen
