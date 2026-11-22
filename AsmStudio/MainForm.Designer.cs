@@ -38,8 +38,8 @@ namespace AsmStudio
         	this.menuSchemeLoad = new System.Windows.Forms.ToolStripMenuItem();
         	this.menuSchemeRun = new System.Windows.Forms.ToolStripMenuItem();
         	this.menuTools = new System.Windows.Forms.ToolStripMenuItem();
-            this.menuToolsSelfTest = new System.Windows.Forms.ToolStripMenuItem();
-            this.menuLanguage = new System.Windows.Forms.ToolStripMenuItem();
+        	this.menuToolsSelfTest = new System.Windows.Forms.ToolStripMenuItem();
+        	this.menuLanguage = new System.Windows.Forms.ToolStripMenuItem();
         	this.menuHelp = new System.Windows.Forms.ToolStripMenuItem();
         	this.menuHelpAbout = new System.Windows.Forms.ToolStripMenuItem();
         	this.tabCloseMenu = new System.Windows.Forms.ContextMenuStrip(this.components);
@@ -60,7 +60,6 @@ namespace AsmStudio
         	this.btnConnect = new System.Windows.Forms.ToolStripButton();
         	this.btnDisconnect = new System.Windows.Forms.ToolStripButton();
         	this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
-        	this.cboSymbol = new System.Windows.Forms.ToolStripComboBox();
         	this.splitContainerMain = new System.Windows.Forms.SplitContainer();
         	this.splitLeft = new System.Windows.Forms.SplitContainer();
         	this.tabControlDocs = new System.Windows.Forms.TabControl();
@@ -82,15 +81,15 @@ namespace AsmStudio
         	this.chkModeCall = new System.Windows.Forms.CheckBox();
         	this.lblCallTarget = new System.Windows.Forms.Label();
         	this.txtCallTarget = new System.Windows.Forms.TextBox();
+        	this.lblModule = new System.Windows.Forms.Label();
+        	this.cboModule = new System.Windows.Forms.ComboBox();
+        	this.lblApis = new System.Windows.Forms.Label();
+        	this.cboApis = new System.Windows.Forms.ComboBox();
         	this.lblArgs = new System.Windows.Forms.Label();
-        	this.txtArg0 = new System.Windows.Forms.TextBox();
-        	this.txtArg1 = new System.Windows.Forms.TextBox();
-        	this.txtArg2 = new System.Windows.Forms.TextBox();
-        	this.txtArg3 = new System.Windows.Forms.TextBox();
-        	this.lblTimeout = new System.Windows.Forms.Label();
-        	this.txtTimeout = new System.Windows.Forms.TextBox();
+        	this.txtArgs = new System.Windows.Forms.TextBox();
         	this.btnAssemble = new System.Windows.Forms.Button();
         	this.btnExecute = new System.Windows.Forms.Button();
+        	this.btnClearLog = new System.Windows.Forms.Button();
         	this.txtLog = new System.Windows.Forms.TextBox();
         	this.menuStrip.SuspendLayout();
         	this.tabCloseMenu.SuspendLayout();
@@ -140,34 +139,34 @@ namespace AsmStudio
 			this.menuFileSave,
 			this.menuFileExit});
         	this.menuFile.Name = "menuFile";
-        	this.menuFile.Size = new System.Drawing.Size(64, 20);
+        	this.menuFile.Size = new System.Drawing.Size(47, 20);
         	this.menuFile.Text = "&File";
         	// 
         	// menuFileNew
         	// 
         	this.menuFileNew.Name = "menuFileNew";
-        	this.menuFileNew.Size = new System.Drawing.Size(140, 22);
+        	this.menuFileNew.Size = new System.Drawing.Size(123, 22);
         	this.menuFileNew.Text = "&New";
         	this.menuFileNew.Click += new System.EventHandler(this.MenuFileNewClick);
         	// 
         	// menuFileOpen
         	// 
         	this.menuFileOpen.Name = "menuFileOpen";
-        	this.menuFileOpen.Size = new System.Drawing.Size(140, 22);
+        	this.menuFileOpen.Size = new System.Drawing.Size(123, 22);
         	this.menuFileOpen.Text = "&Open...";
         	this.menuFileOpen.Click += new System.EventHandler(this.MenuFileOpenClick);
         	// 
         	// menuFileSave
         	// 
         	this.menuFileSave.Name = "menuFileSave";
-        	this.menuFileSave.Size = new System.Drawing.Size(140, 22);
+        	this.menuFileSave.Size = new System.Drawing.Size(123, 22);
         	this.menuFileSave.Text = "&Save";
         	this.menuFileSave.Click += new System.EventHandler(this.MenuFileSaveClick);
         	// 
         	// menuFileExit
         	// 
         	this.menuFileExit.Name = "menuFileExit";
-        	this.menuFileExit.Size = new System.Drawing.Size(140, 22);
+        	this.menuFileExit.Size = new System.Drawing.Size(123, 22);
         	this.menuFileExit.Text = "E&xit";
         	this.menuFileExit.Click += new System.EventHandler(this.MenuFileExitClick);
         	// 
@@ -177,7 +176,7 @@ namespace AsmStudio
 			this.menuEditUndo,
 			this.menuEditRedo});
         	this.menuEdit.Name = "menuEdit";
-        	this.menuEdit.Size = new System.Drawing.Size(64, 20);
+        	this.menuEdit.Size = new System.Drawing.Size(47, 20);
         	this.menuEdit.Text = "&Edit";
         	this.menuEdit.DropDownOpening += new System.EventHandler(this.MenuEditDropDownOpening);
         	// 
@@ -185,7 +184,7 @@ namespace AsmStudio
         	// 
         	this.menuEditUndo.Name = "menuEditUndo";
         	this.menuEditUndo.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z)));
-        	this.menuEditUndo.Size = new System.Drawing.Size(168, 22);
+        	this.menuEditUndo.Size = new System.Drawing.Size(151, 22);
         	this.menuEditUndo.Text = "&Undo";
         	this.menuEditUndo.Click += new System.EventHandler(this.MenuEditUndoClick);
         	// 
@@ -193,7 +192,7 @@ namespace AsmStudio
         	// 
         	this.menuEditRedo.Name = "menuEditRedo";
         	this.menuEditRedo.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Y)));
-        	this.menuEditRedo.Size = new System.Drawing.Size(168, 22);
+        	this.menuEditRedo.Size = new System.Drawing.Size(151, 22);
         	this.menuEditRedo.Text = "&Redo";
         	this.menuEditRedo.Click += new System.EventHandler(this.MenuEditRedoClick);
         	// 
@@ -203,20 +202,20 @@ namespace AsmStudio
 			this.menuSchemeLoad,
 			this.menuSchemeRun});
         	this.menuScheme.Name = "menuScheme";
-        	this.menuScheme.Size = new System.Drawing.Size(64, 20);
+        	this.menuScheme.Size = new System.Drawing.Size(68, 20);
         	this.menuScheme.Text = "&Schemes";
         	// 
         	// menuSchemeLoad
         	// 
         	this.menuSchemeLoad.Name = "menuSchemeLoad";
-        	this.menuSchemeLoad.Size = new System.Drawing.Size(188, 22);
+        	this.menuSchemeLoad.Size = new System.Drawing.Size(228, 22);
         	this.menuSchemeLoad.Text = "&Scan Scheme Folder";
         	this.menuSchemeLoad.Click += new System.EventHandler(this.MenuSchemeLoadClick);
         	// 
         	// menuSchemeRun
         	// 
         	this.menuSchemeRun.Name = "menuSchemeRun";
-        	this.menuSchemeRun.Size = new System.Drawing.Size(188, 22);
+        	this.menuSchemeRun.Size = new System.Drawing.Size(228, 22);
         	this.menuSchemeRun.Text = "&Run Selected Scheme...";
         	this.menuSchemeRun.Click += new System.EventHandler(this.MenuSchemeRunClick);
         	// 
@@ -225,34 +224,34 @@ namespace AsmStudio
         	this.menuTools.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
 			this.menuToolsSelfTest});
         	this.menuTools.Name = "menuTools";
-        	this.menuTools.Size = new System.Drawing.Size(64, 20);
+        	this.menuTools.Size = new System.Drawing.Size(54, 20);
         	this.menuTools.Text = "&Tools";
-        	//
+        	// 
         	// menuToolsSelfTest
-        	//
+        	// 
         	this.menuToolsSelfTest.Name = "menuToolsSelfTest";
-        	this.menuToolsSelfTest.Size = new System.Drawing.Size(245, 22);
+        	this.menuToolsSelfTest.Size = new System.Drawing.Size(207, 22);
         	this.menuToolsSelfTest.Text = "Assembler &Self-Test";
         	this.menuToolsSelfTest.Click += new System.EventHandler(this.MenuToolsSelfTestClick);
-        	//
-        	// menuLanguage（下拉项由 MainForm.BuildLanguageMenu 按 Languages 目录运行时生成）
-        	//
+        	// 
+        	// menuLanguage
+        	// 
         	this.menuLanguage.Name = "menuLanguage";
-        	this.menuLanguage.Size = new System.Drawing.Size(64, 20);
+        	this.menuLanguage.Size = new System.Drawing.Size(75, 20);
         	this.menuLanguage.Text = "&Language";
-        	//
+        	// 
         	// menuHelp
-        	//
+        	// 
         	this.menuHelp.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
 			this.menuHelpAbout});
         	this.menuHelp.Name = "menuHelp";
-        	this.menuHelp.Size = new System.Drawing.Size(64, 20);
+        	this.menuHelp.Size = new System.Drawing.Size(47, 20);
         	this.menuHelp.Text = "&Help";
         	// 
         	// menuHelpAbout
         	// 
         	this.menuHelpAbout.Name = "menuHelpAbout";
-        	this.menuHelpAbout.Size = new System.Drawing.Size(140, 22);
+        	this.menuHelpAbout.Size = new System.Drawing.Size(130, 22);
         	this.menuHelpAbout.Text = "&About...";
         	this.menuHelpAbout.Click += new System.EventHandler(this.MenuHelpAboutClick);
         	// 
@@ -264,33 +263,33 @@ namespace AsmStudio
 			this.tabCloseOthersItem,
 			this.tabCloseAllItem});
         	this.tabCloseMenu.Name = "tabCloseMenu";
-        	this.tabCloseMenu.Size = new System.Drawing.Size(144, 92);
+        	this.tabCloseMenu.Size = new System.Drawing.Size(159, 92);
         	// 
         	// tabCloseMenuItem
         	// 
         	this.tabCloseMenuItem.Name = "tabCloseMenuItem";
-        	this.tabCloseMenuItem.Size = new System.Drawing.Size(143, 22);
+        	this.tabCloseMenuItem.Size = new System.Drawing.Size(158, 22);
         	this.tabCloseMenuItem.Text = "&Close";
         	this.tabCloseMenuItem.Click += new System.EventHandler(this.TabCloseMenuItemClick);
         	// 
         	// tabCloseSaveItem
         	// 
         	this.tabCloseSaveItem.Name = "tabCloseSaveItem";
-        	this.tabCloseSaveItem.Size = new System.Drawing.Size(143, 22);
+        	this.tabCloseSaveItem.Size = new System.Drawing.Size(158, 22);
         	this.tabCloseSaveItem.Text = "&Save This";
         	this.tabCloseSaveItem.Click += new System.EventHandler(this.MenuTabSaveClick);
         	// 
         	// tabCloseOthersItem
         	// 
         	this.tabCloseOthersItem.Name = "tabCloseOthersItem";
-        	this.tabCloseOthersItem.Size = new System.Drawing.Size(143, 22);
+        	this.tabCloseOthersItem.Size = new System.Drawing.Size(158, 22);
         	this.tabCloseOthersItem.Text = "Close &Others";
         	this.tabCloseOthersItem.Click += new System.EventHandler(this.MenuTabCloseOthersClick);
         	// 
         	// tabCloseAllItem
         	// 
         	this.tabCloseAllItem.Name = "tabCloseAllItem";
-        	this.tabCloseAllItem.Size = new System.Drawing.Size(143, 22);
+        	this.tabCloseAllItem.Size = new System.Drawing.Size(158, 22);
         	this.tabCloseAllItem.Text = "Close &All";
         	this.tabCloseAllItem.Click += new System.EventHandler(this.MenuTabCloseAllClick);
         	// 
@@ -299,12 +298,12 @@ namespace AsmStudio
         	this.logClearMenu.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
 			this.logClearMenuItem});
         	this.logClearMenu.Name = "logClearMenu";
-        	this.logClearMenu.Size = new System.Drawing.Size(144, 26);
+        	this.logClearMenu.Size = new System.Drawing.Size(138, 26);
         	// 
         	// logClearMenuItem
         	// 
         	this.logClearMenuItem.Name = "logClearMenuItem";
-        	this.logClearMenuItem.Size = new System.Drawing.Size(143, 22);
+        	this.logClearMenuItem.Size = new System.Drawing.Size(137, 22);
         	this.logClearMenuItem.Text = "&Clear Log";
         	this.logClearMenuItem.Click += new System.EventHandler(this.MenuLogClearClick);
         	// 
@@ -321,7 +320,7 @@ namespace AsmStudio
         	// lblStatus
         	// 
         	this.lblStatus.Name = "lblStatus";
-        	this.lblStatus.Size = new System.Drawing.Size(1126, 17);
+        	this.lblStatus.Size = new System.Drawing.Size(1071, 17);
         	this.lblStatus.Spring = true;
         	this.lblStatus.Text = "Ready";
         	this.lblStatus.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -329,7 +328,7 @@ namespace AsmStudio
         	// lblMode
         	// 
         	this.lblMode.Name = "lblMode";
-        	this.lblMode.Size = new System.Drawing.Size(43, 17);
+        	this.lblMode.Size = new System.Drawing.Size(98, 17);
         	this.lblMode.Text = "Not Connected";
         	// 
         	// toolbar
@@ -342,8 +341,7 @@ namespace AsmStudio
 			this.cboChannel,
 			this.btnConnect,
 			this.btnDisconnect,
-			this.toolStripSeparator1,
-			this.cboSymbol});
+			this.toolStripSeparator1});
         	this.toolbar.Location = new System.Drawing.Point(0, 24);
         	this.toolbar.Name = "toolbar";
         	this.toolbar.Size = new System.Drawing.Size(1184, 25);
@@ -353,14 +351,16 @@ namespace AsmStudio
         	// 
         	this.btnScan.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
         	this.btnScan.Name = "btnScan";
-        	this.btnScan.Size = new System.Drawing.Size(59, 22);
+        	this.btnScan.Size = new System.Drawing.Size(109, 22);
         	this.btnScan.Text = "Scan Processes";
         	this.btnScan.Click += new System.EventHandler(this.BtnScanClick);
         	// 
         	// cboProcess
         	// 
-        	this.cboProcess.AutoCompleteMode = System.Windows.Forms.AutoCompleteMode.SuggestAppend;
-        	this.cboProcess.AutoCompleteSource = System.Windows.Forms.AutoCompleteSource.ListItems;
+        	// AutoComplete 必须保持 None：SuggestAppend 的原生补全弹出窗在下拉展开/重建列表时
+        	// 会引发 comctl32 AV 闪退（敲进程名首字母必崩）。手输名称由 MatchProcessIndex 兜底。
+        	this.cboProcess.AutoCompleteMode = System.Windows.Forms.AutoCompleteMode.None;
+        	this.cboProcess.AutoCompleteSource = System.Windows.Forms.AutoCompleteSource.None;
         	this.cboProcess.Name = "cboProcess";
         	this.cboProcess.Size = new System.Drawing.Size(240, 25);
         	this.cboProcess.DropDown += new System.EventHandler(this.CboProcessEnsureScan);
@@ -376,7 +376,7 @@ namespace AsmStudio
         	// 
         	this.cboChannel.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
         	this.cboChannel.Items.AddRange(new object[] {
-			"RemoteThread+VEH (no DLL)",
+			"RemoteThread+VEH Protection",
 			"Remote Thread (unprotected)"});
         	this.cboChannel.Name = "cboChannel";
         	this.cboChannel.Size = new System.Drawing.Size(140, 25);
@@ -385,7 +385,7 @@ namespace AsmStudio
         	// 
         	this.btnConnect.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
         	this.btnConnect.Name = "btnConnect";
-        	this.btnConnect.Size = new System.Drawing.Size(35, 22);
+        	this.btnConnect.Size = new System.Drawing.Size(60, 22);
         	this.btnConnect.Text = "Connect";
         	this.btnConnect.Click += new System.EventHandler(this.BtnConnectClick);
         	// 
@@ -393,7 +393,7 @@ namespace AsmStudio
         	// 
         	this.btnDisconnect.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
         	this.btnDisconnect.Name = "btnDisconnect";
-        	this.btnDisconnect.Size = new System.Drawing.Size(35, 22);
+        	this.btnDisconnect.Size = new System.Drawing.Size(81, 22);
         	this.btnDisconnect.Text = "Disconnect";
         	this.btnDisconnect.Click += new System.EventHandler(this.BtnDisconnectClick);
         	// 
@@ -401,13 +401,6 @@ namespace AsmStudio
         	// 
         	this.toolStripSeparator1.Name = "toolStripSeparator1";
         	this.toolStripSeparator1.Size = new System.Drawing.Size(6, 25);
-        	//
-        	// cboSymbol
-        	//
-        	this.cboSymbol.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
-        	this.cboSymbol.Name = "cboSymbol";
-        	this.cboSymbol.Size = new System.Drawing.Size(220, 25);
-        	this.cboSymbol.SelectedIndexChanged += new System.EventHandler(this.CboSymbolSelectedIndexChanged);
         	// 
         	// splitContainerMain
         	// 
@@ -423,7 +416,7 @@ namespace AsmStudio
         	// 
         	this.splitContainerMain.Panel2.Controls.Add(this.splitRight);
         	this.splitContainerMain.Size = new System.Drawing.Size(1184, 624);
-        	this.splitContainerMain.SplitterDistance = 646;
+        	this.splitContainerMain.SplitterDistance = 640;
         	this.splitContainerMain.TabIndex = 3;
         	// 
         	// splitLeft
@@ -440,7 +433,7 @@ namespace AsmStudio
         	// splitLeft.Panel2
         	// 
         	this.splitLeft.Panel2.Controls.Add(this.tabControlResults);
-        	this.splitLeft.Size = new System.Drawing.Size(646, 624);
+        	this.splitLeft.Size = new System.Drawing.Size(640, 624);
         	this.splitLeft.SplitterDistance = 340;
         	this.splitLeft.TabIndex = 0;
         	// 
@@ -450,7 +443,7 @@ namespace AsmStudio
         	this.tabControlDocs.Location = new System.Drawing.Point(0, 0);
         	this.tabControlDocs.Name = "tabControlDocs";
         	this.tabControlDocs.SelectedIndex = 0;
-        	this.tabControlDocs.Size = new System.Drawing.Size(646, 340);
+        	this.tabControlDocs.Size = new System.Drawing.Size(640, 340);
         	this.tabControlDocs.TabIndex = 0;
         	this.tabControlDocs.SelectedIndexChanged += new System.EventHandler(this.TabControlDocsSelectedIndexChanged);
         	this.tabControlDocs.MouseUp += new System.Windows.Forms.MouseEventHandler(this.TabControlDocsMouseUp);
@@ -464,7 +457,7 @@ namespace AsmStudio
         	this.tabControlResults.Location = new System.Drawing.Point(0, 0);
         	this.tabControlResults.Name = "tabControlResults";
         	this.tabControlResults.SelectedIndex = 0;
-        	this.tabControlResults.Size = new System.Drawing.Size(646, 280);
+        	this.tabControlResults.Size = new System.Drawing.Size(640, 280);
         	this.tabControlResults.TabIndex = 0;
         	// 
         	// tabHex
@@ -473,7 +466,7 @@ namespace AsmStudio
         	this.tabHex.Location = new System.Drawing.Point(4, 22);
         	this.tabHex.Name = "tabHex";
         	this.tabHex.Padding = new System.Windows.Forms.Padding(3);
-        	this.tabHex.Size = new System.Drawing.Size(638, 254);
+        	this.tabHex.Size = new System.Drawing.Size(632, 254);
         	this.tabHex.TabIndex = 0;
         	this.tabHex.Text = "Machine Code Hex";
         	this.tabHex.UseVisualStyleBackColor = true;
@@ -487,7 +480,7 @@ namespace AsmStudio
         	this.txtHex.Multiline = true;
         	this.txtHex.Name = "txtHex";
         	this.txtHex.ReadOnly = true;
-        	this.txtHex.Size = new System.Drawing.Size(632, 248);
+        	this.txtHex.Size = new System.Drawing.Size(626, 248);
         	this.txtHex.TabIndex = 0;
         	// 
         	// tabErrors
@@ -496,7 +489,7 @@ namespace AsmStudio
         	this.tabErrors.Location = new System.Drawing.Point(4, 22);
         	this.tabErrors.Name = "tabErrors";
         	this.tabErrors.Padding = new System.Windows.Forms.Padding(3);
-        	this.tabErrors.Size = new System.Drawing.Size(812, 253);
+        	this.tabErrors.Size = new System.Drawing.Size(632, 254);
         	this.tabErrors.TabIndex = 1;
         	this.tabErrors.Text = "Validation Errors";
         	this.tabErrors.UseVisualStyleBackColor = true;
@@ -508,7 +501,7 @@ namespace AsmStudio
         	this.lstErrors.ItemHeight = 14;
         	this.lstErrors.Location = new System.Drawing.Point(3, 3);
         	this.lstErrors.Name = "lstErrors";
-        	this.lstErrors.Size = new System.Drawing.Size(806, 247);
+        	this.lstErrors.Size = new System.Drawing.Size(626, 248);
         	this.lstErrors.TabIndex = 0;
         	this.lstErrors.DoubleClick += new System.EventHandler(this.LstErrorsDoubleClick);
         	// 
@@ -518,7 +511,7 @@ namespace AsmStudio
         	this.tabRegs.Location = new System.Drawing.Point(4, 22);
         	this.tabRegs.Name = "tabRegs";
         	this.tabRegs.Padding = new System.Windows.Forms.Padding(3);
-        	this.tabRegs.Size = new System.Drawing.Size(812, 253);
+        	this.tabRegs.Size = new System.Drawing.Size(632, 254);
         	this.tabRegs.TabIndex = 3;
         	this.tabRegs.Text = "Register Results";
         	this.tabRegs.UseVisualStyleBackColor = true;
@@ -533,7 +526,7 @@ namespace AsmStudio
         	this.txtRegs.Name = "txtRegs";
         	this.txtRegs.ReadOnly = true;
         	this.txtRegs.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-        	this.txtRegs.Size = new System.Drawing.Size(806, 247);
+        	this.txtRegs.Size = new System.Drawing.Size(626, 248);
         	this.txtRegs.TabIndex = 0;
         	this.txtRegs.WordWrap = false;
         	// 
@@ -551,11 +544,12 @@ namespace AsmStudio
         	this.splitRight.Panel1.Controls.Add(this.grpCall);
         	this.splitRight.Panel1.Controls.Add(this.btnAssemble);
         	this.splitRight.Panel1.Controls.Add(this.btnExecute);
+        	this.splitRight.Panel1.Controls.Add(this.btnClearLog);
         	// 
         	// splitRight.Panel2
         	// 
         	this.splitRight.Panel2.Controls.Add(this.txtLog);
-        	this.splitRight.Size = new System.Drawing.Size(534, 624);
+        	this.splitRight.Size = new System.Drawing.Size(540, 624);
         	this.splitRight.SplitterDistance = 336;
         	this.splitRight.TabIndex = 0;
         	// 
@@ -565,7 +559,7 @@ namespace AsmStudio
         	this.grpSyntax.Controls.Add(this.rbAtt);
         	this.grpSyntax.Location = new System.Drawing.Point(6, 4);
         	this.grpSyntax.Name = "grpSyntax";
-        	this.grpSyntax.Size = new System.Drawing.Size(164, 68);
+        	this.grpSyntax.Size = new System.Drawing.Size(160, 68);
         	this.grpSyntax.TabIndex = 0;
         	this.grpSyntax.TabStop = false;
         	this.grpSyntax.Text = "Syntax Style";
@@ -598,7 +592,7 @@ namespace AsmStudio
         	// 
         	this.grpArch.Controls.Add(this.rbX64);
         	this.grpArch.Controls.Add(this.rbX86);
-        	this.grpArch.Location = new System.Drawing.Point(174, 4);
+        	this.grpArch.Location = new System.Drawing.Point(6, 78);
         	this.grpArch.Name = "grpArch";
         	this.grpArch.Size = new System.Drawing.Size(160, 68);
         	this.grpArch.TabIndex = 1;
@@ -634,16 +628,15 @@ namespace AsmStudio
         	this.grpCall.Controls.Add(this.chkModeCall);
         	this.grpCall.Controls.Add(this.lblCallTarget);
         	this.grpCall.Controls.Add(this.txtCallTarget);
+        	this.grpCall.Controls.Add(this.lblModule);
+        	this.grpCall.Controls.Add(this.cboModule);
+        	this.grpCall.Controls.Add(this.lblApis);
+        	this.grpCall.Controls.Add(this.cboApis);
         	this.grpCall.Controls.Add(this.lblArgs);
-        	this.grpCall.Controls.Add(this.txtArg0);
-        	this.grpCall.Controls.Add(this.txtArg1);
-        	this.grpCall.Controls.Add(this.txtArg2);
-        	this.grpCall.Controls.Add(this.txtArg3);
-        	this.grpCall.Controls.Add(this.lblTimeout);
-        	this.grpCall.Controls.Add(this.txtTimeout);
-        	this.grpCall.Location = new System.Drawing.Point(6, 78);
+        	this.grpCall.Controls.Add(this.txtArgs);
+        	this.grpCall.Location = new System.Drawing.Point(182, 4);
         	this.grpCall.Name = "grpCall";
-        	this.grpCall.Size = new System.Drawing.Size(328, 212);
+        	this.grpCall.Size = new System.Drawing.Size(336, 286);
         	this.grpCall.TabIndex = 2;
         	this.grpCall.TabStop = false;
         	this.grpCall.Text = "Call Settings";
@@ -653,7 +646,7 @@ namespace AsmStudio
         	this.chkModeCall.AutoSize = true;
         	this.chkModeCall.Location = new System.Drawing.Point(20, 25);
         	this.chkModeCall.Name = "chkModeCall";
-        	this.chkModeCall.Size = new System.Drawing.Size(250, 17);
+        	this.chkModeCall.Size = new System.Drawing.Size(323, 17);
         	this.chkModeCall.TabIndex = 0;
         	this.chkModeCall.Text = "Call target function after execution (marshal args per target ABI)";
         	this.chkModeCall.UseVisualStyleBackColor = true;
@@ -663,7 +656,7 @@ namespace AsmStudio
         	this.lblCallTarget.AutoSize = true;
         	this.lblCallTarget.Location = new System.Drawing.Point(20, 52);
         	this.lblCallTarget.Name = "lblCallTarget";
-        	this.lblCallTarget.Size = new System.Drawing.Size(187, 13);
+        	this.lblCallTarget.Size = new System.Drawing.Size(199, 13);
         	this.lblCallTarget.TabIndex = 1;
         	this.lblCallTarget.Text = "Call target (symbol name or hex address):";
         	// 
@@ -672,71 +665,69 @@ namespace AsmStudio
         	this.txtCallTarget.Font = new System.Drawing.Font("Consolas", 9F);
         	this.txtCallTarget.Location = new System.Drawing.Point(22, 70);
         	this.txtCallTarget.Name = "txtCallTarget";
-        	this.txtCallTarget.Size = new System.Drawing.Size(280, 22);
+        	this.txtCallTarget.Size = new System.Drawing.Size(292, 22);
         	this.txtCallTarget.TabIndex = 2;
+        	// 
+        	// lblModule
+        	// 
+        	this.lblModule.AutoSize = true;
+        	this.lblModule.Location = new System.Drawing.Point(20, 100);
+        	this.lblModule.Name = "lblModule";
+        	this.lblModule.Size = new System.Drawing.Size(45, 13);
+        	this.lblModule.TabIndex = 3;
+        	this.lblModule.Text = "Module:";
+        	// 
+        	// cboModule
+        	// 
+        	this.cboModule.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        	this.cboModule.FormattingEnabled = true;
+        	this.cboModule.Items.AddRange(new object[] {
+			"(connect to target first)"});
+        	this.cboModule.Location = new System.Drawing.Point(78, 96);
+        	this.cboModule.Name = "cboModule";
+        	this.cboModule.Size = new System.Drawing.Size(236, 21);
+        	this.cboModule.TabIndex = 4;
+        	this.cboModule.SelectedIndexChanged += new System.EventHandler(this.CboModuleSelectedIndexChanged);
+        	// 
+        	// lblApis
+        	// 
+        	this.lblApis.AutoSize = true;
+        	this.lblApis.Location = new System.Drawing.Point(20, 130);
+        	this.lblApis.Name = "lblApis";
+        	this.lblApis.Size = new System.Drawing.Size(32, 13);
+        	this.lblApis.TabIndex = 5;
+        	this.lblApis.Text = "APIs:";
+        	// 
+        	// cboApis
+        	// 
+        	this.cboApis.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        	this.cboApis.FormattingEnabled = true;
+        	this.cboApis.Location = new System.Drawing.Point(78, 126);
+        	this.cboApis.Name = "cboApis";
+        	this.cboApis.Size = new System.Drawing.Size(236, 21);
+        	this.cboApis.TabIndex = 6;
+        	this.cboApis.SelectedIndexChanged += new System.EventHandler(this.CboApisSelectedIndexChanged);
         	// 
         	// lblArgs
         	// 
         	this.lblArgs.AutoSize = true;
-        	this.lblArgs.Location = new System.Drawing.Point(20, 100);
+        	this.lblArgs.Location = new System.Drawing.Point(20, 158);
         	this.lblArgs.Name = "lblArgs";
-        	this.lblArgs.Size = new System.Drawing.Size(196, 13);
-        	this.lblArgs.TabIndex = 3;
+        	this.lblArgs.Size = new System.Drawing.Size(158, 13);
+        	this.lblArgs.TabIndex = 7;
         	this.lblArgs.Text = "Args (decimal / 0xhex / symbol):";
         	// 
-        	// txtArg0
+        	// txtArgs
         	// 
-        	this.txtArg0.Font = new System.Drawing.Font("Consolas", 9F);
-        	this.txtArg0.Location = new System.Drawing.Point(22, 118);
-        	this.txtArg0.Name = "txtArg0";
-        	this.txtArg0.Size = new System.Drawing.Size(133, 22);
-        	this.txtArg0.TabIndex = 4;
-        	this.txtArg0.Text = "0";
-        	// 
-        	// txtArg1
-        	// 
-        	this.txtArg1.Font = new System.Drawing.Font("Consolas", 9F);
-        	this.txtArg1.Location = new System.Drawing.Point(169, 118);
-        	this.txtArg1.Name = "txtArg1";
-        	this.txtArg1.Size = new System.Drawing.Size(133, 22);
-        	this.txtArg1.TabIndex = 5;
-        	this.txtArg1.Text = "0";
-        	// 
-        	// txtArg2
-        	// 
-        	this.txtArg2.Font = new System.Drawing.Font("Consolas", 9F);
-        	this.txtArg2.Location = new System.Drawing.Point(22, 146);
-        	this.txtArg2.Name = "txtArg2";
-        	this.txtArg2.Size = new System.Drawing.Size(133, 22);
-        	this.txtArg2.TabIndex = 6;
-        	this.txtArg2.Text = "0";
-        	// 
-        	// txtArg3
-        	// 
-        	this.txtArg3.Font = new System.Drawing.Font("Consolas", 9F);
-        	this.txtArg3.Location = new System.Drawing.Point(169, 146);
-        	this.txtArg3.Name = "txtArg3";
-        	this.txtArg3.Size = new System.Drawing.Size(133, 22);
-        	this.txtArg3.TabIndex = 7;
-        	this.txtArg3.Text = "0";
-        	// 
-        	// lblTimeout
-        	// 
-        	this.lblTimeout.AutoSize = true;
-        	this.lblTimeout.Location = new System.Drawing.Point(20, 178);
-        	this.lblTimeout.Name = "lblTimeout";
-        	this.lblTimeout.Size = new System.Drawing.Size(67, 13);
-        	this.lblTimeout.TabIndex = 8;
-        	this.lblTimeout.Text = "Timeout (ms):";
-        	// 
-        	// txtTimeout
-        	// 
-        	this.txtTimeout.Font = new System.Drawing.Font("Consolas", 9F);
-        	this.txtTimeout.Location = new System.Drawing.Point(110, 174);
-        	this.txtTimeout.Name = "txtTimeout";
-        	this.txtTimeout.Size = new System.Drawing.Size(100, 22);
-        	this.txtTimeout.TabIndex = 9;
-        	this.txtTimeout.Text = "3000";
+        	this.txtArgs.Font = new System.Drawing.Font("Consolas", 9F);
+        	this.txtArgs.Location = new System.Drawing.Point(22, 176);
+        	this.txtArgs.Multiline = true;
+        	this.txtArgs.Name = "txtArgs";
+        	this.txtArgs.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+        	this.txtArgs.Size = new System.Drawing.Size(292, 96);
+        	this.txtArgs.TabIndex = 8;
+        	this.txtArgs.Text = "(\"MessageBox\",0,\"Title\",0x0)";
+        	this.txtArgs.WordWrap = false;
         	// 
         	// btnAssemble
         	// 
@@ -758,6 +749,16 @@ namespace AsmStudio
         	this.btnExecute.UseVisualStyleBackColor = true;
         	this.btnExecute.Click += new System.EventHandler(this.BtnExecuteClick);
         	// 
+        	// btnClearLog
+        	// 
+        	this.btnClearLog.Location = new System.Drawing.Point(358, 296);
+        	this.btnClearLog.Name = "btnClearLog";
+        	this.btnClearLog.Size = new System.Drawing.Size(160, 32);
+        	this.btnClearLog.TabIndex = 5;
+        	this.btnClearLog.Text = "Clear Log";
+        	this.btnClearLog.UseVisualStyleBackColor = true;
+        	this.btnClearLog.Click += new System.EventHandler(this.MenuLogClearClick);
+        	// 
         	// txtLog
         	// 
         	this.txtLog.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(30)))), ((int)(((byte)(30)))), ((int)(((byte)(34)))));
@@ -770,7 +771,7 @@ namespace AsmStudio
         	this.txtLog.Name = "txtLog";
         	this.txtLog.ReadOnly = true;
         	this.txtLog.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-        	this.txtLog.Size = new System.Drawing.Size(534, 284);
+        	this.txtLog.Size = new System.Drawing.Size(540, 284);
         	this.txtLog.TabIndex = 0;
         	this.txtLog.WordWrap = false;
         	// 
@@ -860,7 +861,6 @@ namespace AsmStudio
         private System.Windows.Forms.ToolStripButton btnConnect;
         private System.Windows.Forms.ToolStripButton btnDisconnect;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
-        private System.Windows.Forms.ToolStripComboBox cboSymbol;
         private System.Windows.Forms.SplitContainer splitContainerMain;
         private System.Windows.Forms.SplitContainer splitLeft;
         private System.Windows.Forms.TabControl tabControlDocs;
@@ -880,18 +880,18 @@ namespace AsmStudio
         private System.Windows.Forms.RadioButton rbX64;
         private System.Windows.Forms.RadioButton rbX86;
         private System.Windows.Forms.GroupBox grpCall;
+        private System.Windows.Forms.Label lblModule;
+        private System.Windows.Forms.ComboBox cboModule;
+        private System.Windows.Forms.Label lblApis;
+        private System.Windows.Forms.ComboBox cboApis;
         private System.Windows.Forms.CheckBox chkModeCall;
         private System.Windows.Forms.Label lblCallTarget;
         private System.Windows.Forms.TextBox txtCallTarget;
         private System.Windows.Forms.Label lblArgs;
-        private System.Windows.Forms.TextBox txtArg0;
-        private System.Windows.Forms.TextBox txtArg1;
-        private System.Windows.Forms.TextBox txtArg2;
-        private System.Windows.Forms.TextBox txtArg3;
-        private System.Windows.Forms.Label lblTimeout;
-        private System.Windows.Forms.TextBox txtTimeout;
+        private System.Windows.Forms.TextBox txtArgs;
         private System.Windows.Forms.Button btnAssemble;
         private System.Windows.Forms.Button btnExecute;
+        private System.Windows.Forms.Button btnClearLog;
         private System.Windows.Forms.ContextMenuStrip logClearMenu;
         private System.Windows.Forms.ToolStripMenuItem logClearMenuItem;
     }

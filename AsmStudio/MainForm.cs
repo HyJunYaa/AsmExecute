@@ -1,4 +1,4 @@
-// MainForm.cs - 主窗口逻辑：多文档汇编编辑 / 逐行校验 / 汇编 / 远程执行 / 方案运行
+﻿// MainForm.cs - 主窗口逻辑：多文档汇编编辑 / 逐行校验 / 汇编 / 远程执行 / 方案运行
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -45,6 +45,7 @@ namespace AsmStudio
         {
             base.OnLoad(e);
             LoadAppIcons();
+            SetupFileDrop();   // 汇编文件拖到窗体/编辑器即打开
             SnapshotOriginalTexts();   // 语言键快照必须在首次翻译前建立
             LanguageService.SetCulture(LanguageService.LoadChoice());
             ApplyLanguage();
@@ -60,7 +61,7 @@ namespace AsmStudio
             Log(T("  1. Start a target (bin\\Debug\\x64\\GameSharp.exe, or your own process)"));
             Log(T("  2. Click [Scan Processes], pick a target, then Connect"));
             Log(T("  3. Edit assembly → Validate → Execute / call target function"));
-            Log(T("  4. [Schemes] menu loads Resources\\Scheme\\*.asmscheme and runs them"));
+            Log(T("  4. [Schemes] menu loads Resources\\Schemes\\*.asmscheme and runs them"));
             Log("");
         }
 
@@ -198,6 +199,8 @@ namespace AsmStudio
                 };
                 menuLanguage.DropDownItems.Add(item);
             }
+            // 启动时也要按已保存的语言打勾（此前只在点击时设置，重开程序勾选丢失）
+            UpdateLanguageChecks(LanguageService.CurrentCulture);
         }
 
         /// <summary>切换后同步语言菜单的勾选状态</summary>
@@ -220,8 +223,10 @@ namespace AsmStudio
         {
             try
             {
-                using (Stream s = typeof(MainForm).Assembly.GetManifestResourceStream(
-                    "AsmStudio.Icons.app.ico"))
+                // 窗口/任务栏图标按进程位数取角标版（32/64），与 exe 的 Win32 图标一致
+                string icoName = IntPtr.Size == 4
+                    ? "AsmStudio.Icons.app_32.ico" : "AsmStudio.Icons.app_64.ico";
+                using (Stream s = typeof(MainForm).Assembly.GetManifestResourceStream(icoName))
                 {
                     if (s != null) this.Icon = new Icon(s);
                 }
@@ -259,6 +264,7 @@ namespace AsmStudio
             DocInfo doc = new DocInfo();
             doc.Editor = new AsmEditor();
             doc.Editor.Dock = DockStyle.Fill;
+            doc.Editor.EnableFileDrop(FileDropDragEnter, FileDropDrop);
             doc.Editor.TextChangedDelayed += EditorTextChangedDelayed;
             doc.Editor.CaretInfoChanged += delegate
             {
@@ -338,22 +344,80 @@ namespace AsmStudio
                 dlg.Filter = T("Assembly files (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|All files (*.*)|*.*");
                 dlg.Title = T("Open Assembly File");
                 if (dlg.ShowDialog(this) == DialogResult.OK)
-                {
-                    try
-                    {
-                        string content = File.ReadAllText(dlg.FileName);
-                        DocInfo doc = CreateDocument(dlg.FileName, content);
-                        doc.Editor.Syntax = rbAtt.Checked
-                            ? AsmEditor.SyntaxKindView.Att
-                            : AsmEditor.SyntaxKindView.Intel;
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(this, T("Failed to read: ") + ex.Message, T("Error"),
-                            MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                }
+                    OpenAssemblyFile(dlg.FileName);
             }
+        }
+
+        /// <summary>打开汇编文件为新标签文档（菜单打开与拖放共用）。
+        /// 打开即成为当前文档——执行/校验取的正是当前文档的汇编代码。</summary>
+        private void OpenAssemblyFile(string path)
+        {
+            try
+            {
+                string content = File.ReadAllText(path);
+                DocInfo doc = CreateDocument(path, content);
+                doc.Editor.Syntax = rbAtt.Checked
+                    ? AsmEditor.SyntaxKindView.Att
+                    : AsmEditor.SyntaxKindView.Intel;
+                Log("[+] " + T("Opened: ") + path);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, T("Failed to read: ") + ex.Message, T("Error"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ---- 文件拖放 ----
+
+        private static readonly string[] _dropExts = { ".asm", ".s", ".inc", ".txt" };
+
+        /// <summary>窗体级拖放兜底（编辑器/标签页已在 CreateDocument/这里各自注册）。</summary>
+        private void SetupFileDrop()
+        {
+            EnableDropTarget(this);
+            EnableDropTarget(tabControlDocs);
+        }
+
+        private void EnableDropTarget(Control c)
+        {
+            c.AllowDrop = true;
+            c.DragEnter += FileDropDragEnter;
+            c.DragDrop += FileDropDrop;
+        }
+
+        private void FileDropDragEnter(object sender, DragEventArgs e)
+        {
+            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+            if (!DropHasSupportedFile(e.Data.GetData(DataFormats.FileDrop) as string[])) return;
+            e.Effect = DragDropEffects.Copy;
+        }
+
+        private void FileDropDrop(object sender, DragEventArgs e)
+        {
+            string[] files = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (files == null) return;
+            foreach (string f in files)
+            {
+                if (!HasSupportedExt(f)) continue;
+                OpenAssemblyFile(f);   // 打开即当前文档，执行即汇编其内容
+            }
+        }
+
+        private static bool DropHasSupportedFile(string[] files)
+        {
+            if (files == null) return false;
+            foreach (string f in files)
+                if (HasSupportedExt(f)) return true;
+            return false;
+        }
+
+        private static bool HasSupportedExt(string path)
+        {
+            string ext = Path.GetExtension(path ?? "");
+            foreach (string ok in _dropExts)
+                if (string.Equals(ext, ok, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         private void MenuFileSaveClick(object sender, EventArgs e)
@@ -525,9 +589,8 @@ namespace AsmStudio
             string exeDir = AppDomain.CurrentDomain.BaseDirectory;
             string[] candidates = {
                 Path.Combine(exeDir, "Resources"),                     // 构建输出（csproj 自动复制，扁平）
-                Path.Combine(exeDir, "..", "..", "..", "Resources", "Scheme"),  // 仓库根目录源码（用户整理后的 Scheme 子目录）
-                Path.Combine(exeDir, "..", "..", "..", "Resources"),   // 仓库根目录（兼容直放）
-                Path.Combine(exeDir, "Schemes"),                       // 旧位置兼容
+                Path.Combine(exeDir, "..", "..", "..", "AsmStudio", "Resources", "Schemes"),  // 源码：工程内 Schemes 目录
+                Path.Combine(exeDir, "Schemes"),                       // 工程内（IDE 构建布局）
             };
             foreach (string c in candidates)
                 if (Directory.Exists(c)) return Path.GetFullPath(c);
@@ -545,7 +608,7 @@ namespace AsmStudio
             if (_schemes.Count == 0) LoadSchemes();
             if (_schemes.Count == 0)
             {
-                MessageBox.Show(this, "No scheme files found (Resources\\\\Scheme\\\\*.asmscheme).", T("Info"),
+                MessageBox.Show(this, "No scheme files found (Resources\\\\Schemes\\\\*.asmscheme).", T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -600,7 +663,7 @@ namespace AsmStudio
             MessageBox.Show(this,
                 "AsmStudio — Assemble / Validate / Remote Execute\n\n" +
                 "C# self-built assembly engine (Intel/AT&T, x86/x64)\n" +
-                "Remote channels: RemoteThread+VEH / RemoteThread (no DLL, no injection)\n\n" +
+                "Remote channels: RemoteThread+VEH Protection / RemoteThread (no injection)\n\n" +
                 T("For development/debugging of your own or authorized processes only."),
                 T("About"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -679,13 +742,13 @@ namespace AsmStudio
             {
                 List<ProcessInfo> all = ProcessScanner.ScanProcesses();
 
-                // 下拉展开状态下重建列表会在原生自动补全/下拉窗里触发 AV（闪退根因）：
-                // 先收起下拉、停用 AutoComplete，重建完成后再恢复
+                // 下拉展开状态下重建列表会在原生下拉窗里触发 comctl32 AV（闪退根因，
+                // comctl32!+0x141ec3 两连崩实测）：AutoComplete 已整体移除（见 Designer
+                // 注释），此处仍先收起下拉；扫描由 EnsureScan 延后到独立消息边界执行，
+                // 绝不嵌在按键/点击消息的处理过程中
                 System.Windows.Forms.ComboBox inner = cboProcess.ComboBox;
                 if (inner != null && inner.DroppedDown)
                     inner.DroppedDown = false;
-                AutoCompleteMode oldMode = cboProcess.AutoCompleteMode;
-                cboProcess.AutoCompleteMode = AutoCompleteMode.None;
 
                 _scanResult = new List<ProcessInfo>();
                 cboProcess.Items.Clear();
@@ -695,7 +758,6 @@ namespace AsmStudio
                     _scanResult.Add(p);
                     cboProcess.Items.Add(p.ToString());
                 }
-                cboProcess.AutoCompleteMode = oldMode;
                 lblTargetArch.Text = "";
                 Log(T("Scan finished: ") + _scanResult.Count + T(" processes"));
             }
@@ -710,12 +772,25 @@ namespace AsmStudio
             }
         }
 
+        private bool _ensureScanQueued;   // 按键连击时只排一个延迟扫描
+
         private void CboProcessEnsureScan(object sender, EventArgs e)
         {
-            // 打开下拉 / 点输入框 / 输入首字符时若尚无扫描结果则自动扫描，
-            // 保证任何路径下编辑补全都有进程名单可依据
-            if (_scanResult.Count == 0)
-                BtnScanClick(sender, e);
+            // 打开下拉 / 点输入框 / 输入首字符时若尚无扫描结果则自动扫描。
+            // 扫描必须延后到独立消息边界（BeginInvoke）——此前在按键/点击消息处理的
+            // 半路同步重建列表，native combo 在消息中途遭遇下拉窗销毁重建，
+            // 后续按键落上去就 comctl32 AV 闪退（用户实测：展开下拉疯狂敲进程名
+            // 首字母必崩，事件日志 comctl32!+0x141ec3 两连崩）。
+            if (_scanResult.Count == 0 && !_ensureScanQueued && !_scanning)
+            {
+                _ensureScanQueued = true;
+                BeginInvoke((Action)(delegate
+                {
+                    _ensureScanQueued = false;
+                    if (_scanResult.Count == 0 && !_scanning)
+                        BtnScanClick(this, EventArgs.Empty);
+                }));
+            }
         }
 
         private ExecChannel SelectedChannel
@@ -791,17 +866,17 @@ namespace AsmStudio
                 _session.Dispose();
                 _session = null;
             }
-            cboSymbol.Items.Clear();
+            cboModule.Items.Clear();
+            cboApis.Items.Clear();
         }
 
-        // ---- 远程符号源：模块列表 → 模块导出 API ----
+        // ---- 远程符号源：模块下拉（cboModule）→ 模块导出 API 下拉（cboApis）----
 
         private List<RemoteSymbols.ModuleInfo> _remoteModules =
             new List<RemoteSymbols.ModuleInfo>();
         private List<SymbolInfo> _remoteExports = new List<SymbolInfo>();
-        private int _symbolMode;   // 1=模块列表 2=某模块导出
 
-        /// <summary>连接后自动填充模块列表。不自动钻进第一个模块——
+        /// <summary>连接后自动填充模块下拉。不自动钻进第一个模块——
         /// 多数程序自身导出为 0，钻进去只会得到空下拉（实测教训）。</summary>
         private void FillRemoteModules()
         {
@@ -809,12 +884,20 @@ namespace AsmStudio
             _remoteExports.Clear();
             if (_session != null) _session.Symbols.Clear();
             _remoteModules = RemoteSymbols.EnumModules(_session.Target.Pid);
-            cboSymbol.Items.Clear();
+            cboApis.Items.Clear();
+            cboModule.Items.Clear();
             foreach (RemoteSymbols.ModuleInfo m in _remoteModules)
-                cboSymbol.Items.Add(m.Name);
-            _symbolMode = 1;
-            cboSymbol.SelectedIndex = -1;   // 保持模块列表视图，不触发钻取
+                cboModule.Items.Add(m.Name);
+            cboModule.SelectedIndex = -1;
             Log("[+] Module list refreshed: " + _remoteModules.Count + T(" (select a module to list its exports)"));
+        }
+
+        private void CboModuleSelectedIndexChanged(object sender, EventArgs e)
+        {
+            // 选中模块 → 载入其导出 API（模块下拉保持选中，可随时切换别的模块）
+            int idx = cboModule.SelectedIndex;
+            if (idx >= 0 && idx < _remoteModules.Count)
+                LoadRemoteExports(_remoteModules[idx]);
         }
 
         private void LoadRemoteExports(RemoteSymbols.ModuleInfo m)
@@ -830,25 +913,11 @@ namespace AsmStudio
             {
                 Cursor = Cursors.Default;
             }
-            if (_remoteExports.Count == 0)
-            {
-                // 该模块无导出 → 记录并回退模块列表视图（避免空下拉）
-                Log("[+] " + m.Name + T(" exports: 0 (module has no exported APIs)"));
-                _symbolTable.Clear();
-                _session.Symbols.Clear();   // 与 UI 符号表保持一致，避免方案运行器用到上一个模块的旧地址
-                _remoteExports.Clear();
-                cboSymbol.Items.Clear();
-                foreach (RemoteSymbols.ModuleInfo mm in _remoteModules)
-                    cboSymbol.Items.Add(mm.Name);
-                _symbolMode = 1;
-                cboSymbol.SelectedIndex = -1;
-                return;
-            }
-            _symbolTable.Clear();
-            cboSymbol.Items.Clear();
             // 方案运行器（SchemeRunner）只认 _session.Symbols，UI 侧 _symbolTable 它看不到，
             // 因此这里必须双写：漏写会导致 {GetCurrentProcessId} 之类的占位符永远解析失败。
+            _symbolTable.Clear();
             _session.Symbols.Clear();
+            cboApis.Items.Clear();
             foreach (SymbolInfo s in _remoteExports)
             {
                 if (s.Address != 0)
@@ -856,36 +925,23 @@ namespace AsmStudio
                     _symbolTable.Add(s.Name, s.Address);
                     _session.Symbols.Add(new SymbolInfo { Name = s.Name, Address = s.Address });
                 }
-                cboSymbol.Items.Add(s.ToString());
+                cboApis.Items.Add(s.ToString());
             }
-            _symbolMode = 2;
             Log("[+] " + m.Name + T(" exports: ") + _remoteExports.Count +
                 T(" (select an API to fill the call target)"));
-            if (cboSymbol.Items.Count > 0) cboSymbol.SelectedIndex = 0;
         }
 
-        private void CboSymbolSelectedIndexChanged(object sender, EventArgs e)
+        private void CboApisSelectedIndexChanged(object sender, EventArgs e)
         {
-            if (_symbolMode == 1)
+            // 选中导出 API → 填入调用目标（十六进制地址）并自动勾选调用
+            int idx = cboApis.SelectedIndex;
+            if (idx >= 0 && idx < _remoteExports.Count)
             {
-                // 选中模块 → 载入其导出 API
-                int idx = cboSymbol.SelectedIndex;
-                if (idx >= 0 && idx < _remoteModules.Count)
-                    LoadRemoteExports(_remoteModules[idx]);
-                return;
-            }
-            if (_symbolMode == 2)
-            {
-                // 选中导出 API → 填入调用目标（十六进制地址）并自动勾选调用
-                int idx = cboSymbol.SelectedIndex;
-                if (idx >= 0 && idx < _remoteExports.Count)
+                SymbolInfo s = _remoteExports[idx];
+                if (s.Address != 0)
                 {
-                    SymbolInfo s = _remoteExports[idx];
-                    if (s.Address != 0)
-                    {
-                        txtCallTarget.Text = "0x" + s.Address.ToString("X");
-                        chkModeCall.Checked = true;
-                    }
+                    txtCallTarget.Text = "0x" + s.Address.ToString("X");
+                    chkModeCall.Checked = true;
                 }
             }
         }
@@ -1056,14 +1112,22 @@ namespace AsmStudio
 
             txtHex.Text = result.Hex;
             ulong[] args;
+            string[] argStrings;
             int nargs;
-            ParseArgs(out args, out nargs);
+            string argsErr;
+            if (!ParseArgsText(out args, out argStrings, out nargs, out argsErr))
+            {
+                MessageBox.Show(this, argsErr, T("Error"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
             ulong callTarget = ParseCallTarget();
             bool modeCall = chkModeCall.Checked && callTarget != 0;
-            int timeout = ParseTimeout();
+            const int timeout = 3000;   // 超时输入框已移除（UI 精简）：固定 3s，超时按泄漏策略兜底
 
             Log("======== Execute (" + result.Code.Length + T(" bytes, ") +
-                (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) + ") ========");
+                (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) +
+                (nargs > 0 ? ", args=" + nargs : "") + ") ========");
 
             /* 远程执行要等目标线程（默认 3s 超时，死循环就等满）——放到线程池跑，
              * 期间界面保持响应；_executing 兼作重入保护（防止连点重复注入）。 */
@@ -1082,7 +1146,32 @@ namespace AsmStudio
                 ExecutionResult rr;
                 try
                 {
-                    rr = sess.Execute(code, args, nargs, callTarget, modeCall, timeout);
+                    // 引号字符串参数：在目标进程分配 UTF-16 缓冲区、传指针。
+                    // 干净结束即释放；超时/异常时泄漏（目标线程可能仍在引用，
+                    // 与执行页的泄漏策略一致——释放正在执行的页会崩目标）。
+                    List<ulong> allocs = new List<ulong>();
+                    bool allocFailed = false;
+                    for (int i = 0; i < nargs && !allocFailed; i++)
+                    {
+                        if (argStrings[i] == null) continue;
+                        ulong p = sess.AllocUtf16(argStrings[i]);
+                        if (p == 0) { allocFailed = true; break; }
+                        args[i] = p;
+                        allocs.Add(p);
+                    }
+                    if (allocFailed)
+                    {
+                        foreach (ulong p in allocs) sess.FreeRemote(p);
+                        rr = new ExecutionResult();
+                        rr.Status = ExecStatus.Internal;
+                        rr.Message = T("Failed to allocate string buffer in target");
+                    }
+                    else
+                    {
+                        rr = sess.Execute(code, args, nargs, callTarget, modeCall, timeout);
+                        if (rr.Status == ExecStatus.Ok)
+                            foreach (ulong p in allocs) sess.FreeRemote(p);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1197,29 +1286,145 @@ namespace AsmStudio
             }
         }
 
-        private void ParseArgs(out ulong[] args, out int nargs)
+        /// <summary>符号解析：先精确匹配，再按 "模块!名" / "模块.名" / "模块\名" 后缀回退。
+        /// 符号表键带模块前缀（如 kernel32.dll!Sleep），UI 输入通常只写裸名——
+        /// 与 SchemeRunner 的 TryGetBySuffix 同一语义。</summary>
+        private bool TryResolveSymbol(string name, out ulong addr)
         {
-            string[] texts = { txtArg0.Text, txtArg1.Text, txtArg2.Text, txtArg3.Text };
-            args = new ulong[4];
-            // 尾部空框表示"不传该参数"：若按 4 个全算，x86 目标会多压/多清 16 字节栈，
-            // 被调函数读到的参数值也会整体偏移。空框只在"中间"时才补 0。
-            int last = -1;
-            for (int i = 0; i < texts.Length; i++)
-                if (!string.IsNullOrEmpty((texts[i] ?? "").Trim())) last = i;
-            nargs = last + 1;
-            for (int i = 0; i < nargs; i++)
+            if (_symbolTable.TryGet(name, out addr)) return true;
+            if (string.IsNullOrEmpty(name)) return false;
+            foreach (KeyValuePair<string, ulong> kv in _symbolTable.Items)
             {
-                string s = (texts[i] ?? "").Trim();
-                ulong v = 0;
-                if (s.Length == 0) { args[i] = 0; continue; }
-                if (_symbolTable.TryGet(s, out v)) { args[i] = v; continue; }
-                bool hex = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-                if (hex)
-                    ulong.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out v);
-                else
-                    ulong.TryParse(s, out v);
-                args[i] = v;
+                string k = kv.Key;
+                int sep = k.Length - name.Length - 1;
+                if (sep < 0) continue;
+                char c = k[sep];
+                if ((c == '!' || c == '.' || c == '\\') &&
+                    k.EndsWith(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    addr = kv.Value;
+                    return true;
+                }
             }
+            addr = 0;
+            return false;
+        }
+
+        /// <summary>参数文本框 → 参数序列。两种写法：
+        /// ① 顺序式 ("MessageBox",0,"Title",0x0)：数组顺序即参数顺序，外层括号可省；
+        /// ② 槽位式 0:"MessageBox" 2:0x10：冒号前为参数槽位（0 起），未指定的槽位补 0，
+        ///    空格/逗号分隔，可与顺序式思想独立使用（一行内不能混用两种）。
+        /// 值类型：十进制 / 0x 十六进制 / 符号名（带或不带模块前缀均可）/ "引号字符串"。
+        /// 字符串在调用时于目标进程分配 UTF-16 缓冲区、传指针（见 BtnExecuteClick）。
+        /// 最多 4 个参数——VEH 通道后奏只支持寄存器赋参 4 个（x64 ABI 寄存器传参上限）。</summary>
+        private bool ParseArgsText(out ulong[] args, out string[] argStrings,
+            out int nargs, out string err)
+        {
+            args = new ulong[4];
+            argStrings = new string[4];
+            nargs = 0;
+            err = null;
+            string text = (txtArgs.Text ?? "").Trim();
+            if (text.StartsWith("(") && text.EndsWith(")") && text.Length >= 2)
+                text = text.Substring(1, text.Length - 2).Trim();
+            if (text.Length == 0) return true;
+
+            // 槽位模式探测：把引号段遮掉再判断，避免字符串内容（如 "0:abc"）误判
+            var masked = new System.Text.StringBuilder(text);
+            bool inQuote = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == '"') inQuote = !inQuote;
+                else if (inQuote) masked[i] = ' ';
+            }
+            bool slotMode = System.Text.RegularExpressions.Regex.IsMatch(
+                masked.ToString(), "(^|[\\s,])[0-9]+\\s*:");
+
+            // 引号感知分词：引号段并成一个 token；槽位模式空格/逗号都切分，顺序模式仅逗号。
+            // sawQuote 记录"该 token 含引号"——闭合引号会清 quoted，但标记必须保留到 emit，
+            // 否则 "hi" 的字符串标记丢失会被当裸符号解析（实测报"无法解析参数: hi"）。
+            var parts = new List<KeyValuePair<bool, string>>();   // bool = 引号字符串
+            var cur = new System.Text.StringBuilder();
+            bool quoted = false, sawQuote = false, hasToken = false;
+            Action emit = delegate
+            {
+                if (!hasToken) return;
+                parts.Add(new KeyValuePair<bool, string>(sawQuote, cur.ToString().Trim()));
+                cur.Length = 0;
+                quoted = false;
+                sawQuote = false;
+                hasToken = false;
+            };
+            foreach (char c in text)
+            {
+                if (quoted)
+                {
+                    if (c == '"') quoted = false;
+                    else cur.Append(c);
+                    continue;
+                }
+                if (c == '"') { quoted = true; sawQuote = true; hasToken = true; continue; }
+                if (c == ',' || (slotMode && char.IsWhiteSpace(c))) { emit(); continue; }
+                cur.Append(c);
+                hasToken = true;
+            }
+            emit();
+            if (quoted) { err = T("Unterminated quoted string in args"); return false; }
+
+            foreach (KeyValuePair<bool, string> p in parts)
+            {
+                string tok = p.Value;
+                int slot;
+                string val = tok;
+                if (slotMode)
+                {
+                    int colon = tok.IndexOf(':');
+                    if (colon <= 0 || !int.TryParse(tok.Substring(0, colon).Trim(), out slot))
+                    {
+                        err = T("Bad arg slot syntax: ") + tok;
+                        return false;
+                    }
+                    if (colon + 1 >= tok.Length)
+                    {
+                        err = T("Missing value after slot: ") + tok;
+                        return false;
+                    }
+                    val = tok.Substring(colon + 1).Trim();
+                }
+                else
+                {
+                    slot = parts.IndexOf(p);
+                }
+                if (slot < 0 || slot > 3)
+                {
+                    err = T("Arg slot out of range (0-3): ") + tok;
+                    return false;
+                }
+                nargs = Math.Max(nargs, slot + 1);
+
+                if (p.Key)
+                {
+                    argStrings[slot] = val;   // 引号字符串 → 执行时分配远程缓冲区传指针
+                    args[slot] = 0;
+                    continue;
+                }
+                ulong v;
+                if (!TryResolveSymbol(val, out v))
+                {
+                    bool hex = val.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+                    bool ok = hex
+                        ? ulong.TryParse(val.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out v)
+                        : ulong.TryParse(val, out v);
+                    if (!ok)
+                    {
+                        err = T("Cannot parse arg: ") + val;
+                        return false;
+                    }
+                }
+                args[slot] = v;
+            }
+            return true;
         }
 
         private ulong ParseCallTarget()
@@ -1227,19 +1432,14 @@ namespace AsmStudio
             string s = (txtCallTarget.Text ?? "").Trim();
             if (s.Length == 0) return 0;
             ulong v;
-            if (_symbolTable.TryGet(s, out v)) return v;
+            if (TryResolveSymbol(s, out v)) return v;
             bool hex = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
-            if (hex)
-                ulong.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out v);
-            else
-                ulong.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out v);
-            return v;
-        }
-
-        private int ParseTimeout()
-        {
-            int v;
-            return int.TryParse((txtTimeout.Text ?? "").Trim(), out v) ? v : 3000;
+            bool ok = hex
+                ? ulong.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out v)
+                : ulong.TryParse(s, out v);
+            if (!ok)
+                Log("[!] " + T("Call target not found in symbols (use module-prefixed name or hex): ") + s);
+            return ok ? v : 0;
         }
 
         private void MenuLogClearClick(object sender, EventArgs e)

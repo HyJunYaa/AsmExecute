@@ -5,7 +5,7 @@
 // 文件名不用标准文化后缀（避免 GenerateResource 触发卫星程序集生成——本机无 SDK/AL.exe），
 // 三个资源集全部内嵌主程序集，T(key) 按 CurrentCulture 显式选择资源集。
 // 未命中返回键本身（源码即英文基准，键=英文原文 = 正确回退）。
-// 语言选择持久化 exe\language.ini（en / zhCN / zhHant）。
+// 语言选择持久化 exe\AsmStudio.ini 的 [General] Language（经 AppConfig；旧 language.ini 自动迁移）。
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -102,32 +102,19 @@ namespace AsmStudio.Localization
             CurrentCulture = string.IsNullOrWhiteSpace(culture) ? "en" : culture;
         }
 
-        /// <summary>持久化语言选择</summary>
+        /// <summary>持久化语言选择（AsmStudio.ini → [General] Language）</summary>
         public static void SaveChoice(string culture)
         {
-            try
-            {
-                File.WriteAllText(
-                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "language.ini"),
-                    culture ?? "en", Encoding.UTF8);
-            }
-            catch { }
+            AppConfig.Set("General", "Language", culture ?? "en");
+            AppConfig.Save();
         }
 
-        /// <summary>读取持久化的语言选择（无文件/未知代码返回 en）</summary>
+        /// <summary>读取持久化的语言选择（无记录/未知代码返回 en）</summary>
         public static string LoadChoice()
         {
-            try
-            {
-                string p = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "language.ini");
-                if (File.Exists(p))
-                {
-                    string s = File.ReadAllText(p, Encoding.UTF8).Trim();
-                    foreach (LanguageDef d in _languages)
-                        if (d.Culture == s) return s;
-                }
-            }
-            catch { }
+            string s = AppConfig.Get("General", "Language", "en");
+            foreach (LanguageDef d in _languages)
+                if (d.Culture == s) return s;
             return "en";
         }
     }

@@ -7,6 +7,7 @@
 // 托管程序的特殊性：方法地址是 JIT 运行时产生的，每次启动都可能不同——
 // 这正是"未知目标"里最恶劣的情况，适合冒烟测试。
 using System;
+using System.IO;
 
 namespace GameSharp
 {
@@ -57,8 +58,28 @@ namespace GameSharp
                 _hp, _score, _pos[0], _pos[1], _pos[2]);
         }
 
+        // 任意控制台代码页（437/936/…）下中文都能显示：
+        // ①输出码页切 65001（控制台按 UTF-8 解释字节）；②stdout 直接换 UTF-8 writer
+        // （Console.OutputEncoding setter 在重定向句柄上会抛 IOException，故不用它）
+        [System.Runtime.InteropServices.DllImport("kernel32")]
+        private static extern bool SetConsoleOutputCP(uint codePage);
+
+        private static void ForceUtf8Console()
+        {
+            try
+            {
+                SetConsoleOutputCP(65001);
+                Console.Out.Flush();
+                Console.SetOut(new StreamWriter(Console.OpenStandardOutput(),
+                    new System.Text.UTF8Encoding(false)) { AutoFlush = true });
+            }
+            catch (Exception) { }   // stdout 完全脱离/特殊宿主时保持默认，不影响运行
+        }
+
         private static int Main(string[] args)
         {
+            ForceUtf8Console();
+
             Console.WriteLine("=== GameSharp 迷你游戏目标 (arch={0} 位) ===",
                 IntPtr.Size * 8);
             Console.WriteLine("[i] 这是一个模拟未知目标的冒烟测试环境：内部符号不公开，地址自行定位。");

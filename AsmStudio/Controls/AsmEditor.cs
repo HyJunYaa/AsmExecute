@@ -106,6 +106,19 @@ namespace AsmStudio.Controls
             _lastSnapshot.SelLength = 0;
         }
 
+        /// <summary>启用汇编文件拖放：UserControl 与内部 RichTextBox 都注册同一对处理器。
+        /// RTB 自带原生 OLE 拖放会抢走拖拽事件，必须连内层一起接管；
+        /// 事件逻辑由调用方（MainForm）统一处理（打开文件为新文档）。</summary>
+        public void EnableFileDrop(DragEventHandler enterHandler, DragEventHandler dropHandler)
+        {
+            AllowDrop = true;
+            DragEnter += enterHandler;
+            DragDrop += dropHandler;
+            _rtb.AllowDrop = true;
+            _rtb.DragEnter += enterHandler;
+            _rtb.DragDrop += dropHandler;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)

@@ -75,14 +75,14 @@
   <data name="Close &amp;All" xml:space="preserve">
     <value>Close &amp;All</value>
   </data>
-  <data name="&amp;Clear Log" xml:space="preserve">
-    <value>&amp;Clear Log</value>
-  </data>
   <data name="Scan Processes" xml:space="preserve">
     <value>Scan Processes</value>
   </data>
-  <data name="RemoteThread+VEH (no DLL)" xml:space="preserve">
-    <value>RemoteThread+VEH (no DLL)</value>
+  <data name="Browse exports: module → API (fills call target)" xml:space="preserve">
+    <value>Browse exports: module → API (fills call target)</value>
+  </data>
+  <data name="RemoteThread+VEH Protection" xml:space="preserve">
+    <value>RemoteThread+VEH Protection</value>
   </data>
   <data name="Remote Thread (unprotected)" xml:space="preserve">
     <value>Remote Thread (unprotected)</value>
@@ -122,6 +122,39 @@
   </data>
   <data name="Execute (send to target)" xml:space="preserve">
     <value>Execute (send to target)</value>
+  </data>
+  <data name="Module:" xml:space="preserve">
+    <value>Module:</value>
+  </data>
+  <data name="APIs:" xml:space="preserve">
+    <value>APIs:</value>
+  </data>
+  <data name="Clear Log" xml:space="preserve">
+    <value>Clear Log</value>
+  </data>
+  <data name="Unterminated quoted string in args" xml:space="preserve">
+    <value>Unterminated quoted string in args</value>
+  </data>
+  <data name="Bad arg slot syntax: " xml:space="preserve">
+    <value>Bad arg slot syntax: </value>
+  </data>
+  <data name="Missing value after slot: " xml:space="preserve">
+    <value>Missing value after slot: </value>
+  </data>
+  <data name="Arg slot out of range (0-3): " xml:space="preserve">
+    <value>Arg slot out of range (0-3): </value>
+  </data>
+  <data name="Cannot parse arg: " xml:space="preserve">
+    <value>Cannot parse arg: </value>
+  </data>
+  <data name="Call target not found in symbols (use module-prefixed name or hex): " xml:space="preserve">
+    <value>Call target not found in symbols (use module-prefixed name or hex): </value>
+  </data>
+  <data name="Failed to allocate string buffer in target" xml:space="preserve">
+    <value>Failed to allocate string buffer in target</value>
+  </data>
+  <data name="Opened: " xml:space="preserve">
+    <value>Opened: </value>
   </data>
   <data name="Machine Code Hex" xml:space="preserve">
     <value>Machine Code Hex</value>
@@ -398,9 +431,6 @@
   </data>
   <data name="RemoteThread mode" xml:space="preserve">
     <value>RemoteThread mode</value>
-  </data>
-  <data name="RemoteThread+assembly VEH (no DLL)" xml:space="preserve">
-    <value>RemoteThread+assembly VEH (no DLL)</value>
   </data>
   <data name="In-process mode needs " xml:space="preserve">
     <value>In-process mode needs </value>

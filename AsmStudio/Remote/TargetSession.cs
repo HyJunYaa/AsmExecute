@@ -59,6 +59,49 @@ namespace AsmStudio.Remote
             return r;
         }
 
+        /// <summary>在目标进程分配缓冲区并写入 UTF-16LE 字符串（含终止符），返回远程地址（0=失败）。
+        /// 调用设置里的引号字符串参数经此传指针；调用方负责用 FreeRemote 释放（超时泄漏除外）。</summary>
+        public ulong AllocUtf16(string s)
+        {
+            if (Target == null) return 0;
+            if (s == null) s = "";
+            IntPtr proc = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, Target.Pid);
+            if (proc == IntPtr.Zero) return 0;
+            try
+            {
+                byte[] data = System.Text.Encoding.Unicode.GetBytes(s + "\0");
+                IntPtr p = NativeInterop.VirtualAllocEx(proc, IntPtr.Zero, (UIntPtr)data.Length,
+                    NativeInterop.MEM_COMMIT | NativeInterop.MEM_RESERVE,
+                    NativeInterop.PAGE_READWRITE);
+                if (p == IntPtr.Zero) return 0;
+                UIntPtr written;
+                if (!NativeInterop.WriteProcessMemory(proc, p, data, (UIntPtr)data.Length, out written))
+                    return 0;
+                return (ulong)p.ToInt64();
+            }
+            finally
+            {
+                NativeInterop.CloseHandle(proc);
+            }
+        }
+
+        /// <summary>释放目标进程内缓冲区（best effort，失败静默——页可能已被目标持有）。</summary>
+        public void FreeRemote(ulong addr)
+        {
+            if (Target == null || addr == 0) return;
+            IntPtr proc = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, Target.Pid);
+            if (proc == IntPtr.Zero) return;
+            try
+            {
+                NativeInterop.VirtualFreeEx(proc, new IntPtr(unchecked((long)addr)),
+                    UIntPtr.Zero, NativeInterop.MEM_RELEASE);
+            }
+            finally
+            {
+                NativeInterop.CloseHandle(proc);
+            }
+        }
+
         /// <summary>汇编 VEH 通道：执行后读回data块，把拦截结果并入执行结果</summary>
         private void MergeVehOutcome(ExecutionResult r, int timeoutMs)
         {
@@ -98,7 +141,7 @@ namespace AsmStudio.Remote
                 AsmVehProtector.VehSnapshot snap;
                 if (_veh.ReadSnapshot(out snap) && snap.SeenForeign > 0)
                 {
-                    r.Message = LanguageService.T("RemoteThread+assembly VEH (no DLL)") +
+                    r.Message = LanguageService.T("RemoteThread+VEH Protection") +
                         " | target threads raised " + snap.SeenForeign +
                         " non-session exception(s), passed through";
                 }

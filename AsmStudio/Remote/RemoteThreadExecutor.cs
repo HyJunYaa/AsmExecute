@@ -74,8 +74,13 @@ namespace AsmStudio.Remote
                         if (nargs > 1) { pre.AddRange(new byte[] { 0x48, 0xBA }); AddQ(pre, args[1]); }  // movabs rdx
                         if (nargs > 2) { pre.AddRange(new byte[] { 0x49, 0xB8 }); AddQ(pre, args[2]); }  // movabs r8
                         if (nargs > 3) { pre.AddRange(new byte[] { 0x49, 0xB9 }); AddQ(pre, args[3]); }  // movabs r9
+                        // 栈对齐：桩 3 push + call 用户码后 rsp≡8(mod16)，此处直接 call 目标
+                        // 会使目标入口 rsp≡0——违反 ABI，带 SSE 的函数（音频/游戏引擎几乎必用）
+                        // 在 movaps 上未对齐 AV（Beep 实测杀死目标）。sub 8 对齐后再调。
+                        pre.AddRange(new byte[] { 0x48, 0x83, 0xEC, 0x08 });                             // sub rsp, 8
                         pre.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(pre, callTarget);                  // movabs rax, target
                         pre.AddRange(new byte[] { 0xFF, 0xD0 });                                         // call rax
+                        pre.AddRange(new byte[] { 0x48, 0x83, 0xC4, 0x08 });                             // add rsp, 8
                     }
                     else
                     {
@@ -231,7 +236,7 @@ namespace AsmStudio.Remote
                             ? BitConverter.ToUInt64(snap, i * 8)
                             : (ulong)BitConverter.ToUInt32(snap, i * 4);
                 }
-                r.Message = vehData != 0 ? LanguageService.T("RemoteThread+assembly VEH (no DLL)") : LanguageService.T("RemoteThread mode");
+                r.Message = vehData != 0 ? LanguageService.T("RemoteThread+VEH Protection") : LanguageService.T("RemoteThread mode");
                 return r;
             }
             finally
