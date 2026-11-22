@@ -344,8 +344,11 @@ namespace AsmStudio.Remote
             return e.Finish();
         }
 
-        /* ---- x86 VEH handler（stdcall, ret 4）----
+        /* ---- x86 VEH handler（cdecl，plain ret）----
          * [esp+4] = EXCEPTION_POINTERS*；只用 eax/ecx/edx，数据经绝对 imm32 访问。
+         * x86 与 x64 的结构差异（实测确认）:
+         *   EXCEPTION_POINTERS = { ER* +0, CTX* +4 }（x64 是 +0/+8，勿照搬）；
+         *   CONTEXT.Eip=0xB8、Esp=0xC4；handler 返回约定为 cdecl（esp 探针实测 delta=0）。
          * OURS 路径同 x64: 记录后改 ctx（Eip=resumeEip、Esp=savedEsp-12）→ CONTINUE_EXECUTION。 */
         private static byte[] BuildHandlerX86(ulong dataAddr)
         {
@@ -354,7 +357,7 @@ namespace AsmStudio.Remote
             e.Bytes(0x8B, 0x08);                               // mov ecx, [eax]        ExceptionRecord*
             e.Bytes(0x8B, 0x11);                               // mov edx, [ecx]        ExceptionCode
             e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 0x38);   // mov [DATA+0x38], edx  lastSeenCode
-            e.Bytes(0x8B, 0x50, 0x08);                         // mov edx, [eax+8]      CONTEXT*
+            e.Bytes(0x8B, 0x50, 0x04);                         // mov edx, [eax+4]      CONTEXT*（x86 EP={ER*+0,CTX*+4}，+8 是 x64 布局！）
             e.Bytes(0x8B, 0x8A, 0xB8, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xB8]   eip（x86 CONTEXT.Eip=0xB8）
             e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x40);   // mov [DATA+0x40], ecx  lastSeenRip
             e.Bytes(0xFF, 0x05); e.Abs32((long)dataAddr + 0x48);   // inc dword [DATA+0x48] seenCount
@@ -369,20 +372,20 @@ namespace AsmStudio.Remote
             }
             e.Label("notours");
             e.Bytes(0x31, 0xC0);                               // xor eax, eax
-            e.Bytes(0xC3);                         // ret 4 (CONTINUE_SEARCH)
+            e.Bytes(0xC2, 0x04, 0x00);             // ret 4（stdcall，实测：plain ret 会炸调度器，连 SEH 都走不到）
             e.Label("ours");
             e.Bytes(0x89, 0x15); e.Abs32((long)dataAddr + 8);  // mov [DATA+8], edx     lastExcCode
             e.Bytes(0xFF, 0x05); e.Abs32((long)dataAddr + 4);  // inc dword [DATA+4]    faultCount++
             e.Bytes(0xC7, 0x05); e.Abs32((long)dataAddr); e.Imm32(0);  // mov dword [DATA], 0
             e.Bytes(0x8B, 0x44, 0x24, 0x04);                   // mov eax, [esp+4]      EP
-            e.Bytes(0x8B, 0x48, 0x08);                         // mov ecx, [eax+8]      CONTEXT*
+            e.Bytes(0x8B, 0x48, 0x04);                         // mov ecx, [eax+4]      CONTEXT*（x86 布局 +4）
             e.Bytes(0x8B, 0x15); e.Abs32((long)dataAddr + 0x10);   // mov edx, [DATA+0x10] savedEsp
             e.Bytes(0x83, 0xEA, 0x0C);                         // sub edx, 12           （等效 3 push + ret 已消费）
             e.Bytes(0x89, 0x91, 0xC4, 0x00, 0x00, 0x00);       // mov [ecx+0xC4], edx   ctx.Esp（x86 CONTEXT.Esp=0xC4；0xBC 是 SegCs！）
             e.Bytes(0x8B, 0x15); e.Abs32((long)dataAddr + 0x18);   // mov edx, [DATA+0x18] resumeEip（宿主写入）
             e.Bytes(0x89, 0x91, 0xB8, 0x00, 0x00, 0x00);       // mov [ecx+0xB8], edx   ctx.Eip（0xB0 是 Eax！）
             e.Bytes(0xB8, 0xFF, 0xFF, 0xFF, 0xFF);             // mov eax, -1
-            e.Bytes(0xC3);                         // ret 4
+            e.Bytes(0xC2, 0x04, 0x00);             // ret 4（stdcall）
             return e.Finish();
         }
 
@@ -405,12 +408,15 @@ namespace AsmStudio.Remote
             return e.Finish();
         }
 
-        /* ---- x86 注册桩: push 1; push handler; call AVEH（stdcall 自清栈），ExitThread 收尾 ---- */
+        /* ---- x86 注册桩: push handler; push 1; call AVEH（stdcall 自清栈），ExitThread 收尾 ----
+         * 注意压栈顺序: stdcall 从右向左, arg1=First(1) 必须最后推！
+         * 原版 push 1; push handler 的顺序是反的 → 实际调用 AVEH(First=handler, Handler=1)，
+         * VEH 列表里登记的 handler 指针为 1，真实异常一来调度器 call 1 即崩。 */
         private static byte[] BuildRegStubX86(ulong aveh, ulong exitThread, ulong handlerAddr, ulong dataAddr)
         {
             Emitter e = new Emitter();
-            e.Bytes(0x6A, 0x01);                               // push 1
-            e.Bytes(0x68); e.Abs32((long)handlerAddr);         // push handler
+            e.Bytes(0x68); e.Abs32((long)handlerAddr);         // push handler（先推 = arg2 Handler）
+            e.Bytes(0x6A, 0x01);                               // push 1（后推 = arg1 First）
             e.Bytes(0xB8); e.Abs32((long)aveh);                // mov eax, AVEH
             e.Bytes(0xFF, 0xD0);                               // call eax
             e.Bytes(0xBA); e.Abs32((long)dataAddr);            // mov edx, DATA
