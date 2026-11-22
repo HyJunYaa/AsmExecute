@@ -17,7 +17,7 @@ namespace AsmStudio.Engine
             List<AsmError> errors = result.Errors;
             if (text == null) text = string.Empty;
 
-            // ---- 解析所有行 → Statements ----
+            // ---- 解析所有Row → Statements ----
             List<Statement> stmts;
             if (!ParseAll(text, options, errors, out stmts))
             {
@@ -62,7 +62,7 @@ namespace AsmStudio.Engine
                         if (!definedThisPass.Add(st.LabelDef))
                         {
                             errors.Add(new AsmError(st.Line, st.Column,
-                                "标签重复定义: '" + st.LabelDef + "'"));
+                                "Duplicate label definition: '" + st.LabelDef + "'"));
                             result.Success = false;
                             return result;
                         }
@@ -98,7 +98,7 @@ namespace AsmStudio.Engine
             }
             if (code.Count > 0x4000000)
             {
-                errors.Add(new AsmError(0, 0, "输出超过 64MB，疑似汇编不收敛"));
+                errors.Add(new AsmError(0, 0, "Output exceeds 64MB — assembly probably not converging"));
                 result.Success = false;
                 return result;
             }
@@ -109,7 +109,7 @@ namespace AsmStudio.Engine
             return result;
         }
 
-        /// <summary>解析全部行；任何解析错误都会记录并返回 false。</summary>
+        /// <summary>解析全部行；任何解析Error都会记录并返回 false。</summary>
         private static bool ParseAll(string text, AssembleOptions options,
             List<AsmError> errors, out List<Statement> stmts)
         {
@@ -140,8 +140,8 @@ namespace AsmStudio.Engine
         }
 
         /// <summary>
-        /// 校验模式：逐行独立汇编，收集所有行的错误（适合编辑器实时诊断）。
-        /// 标签在整段范围内预先登记（避免"未定义标签"噪声），外部符号走真实符号表。
+        /// 校验模式：逐行独立汇编，收集所有行的Error（适合编辑器实时诊断）。
+        /// 标签在整段范围内预先登记（避免"undefined label"噪声），外部符号走真实符号表。
         /// </summary>
         public static List<AsmError> Validate(string text, AssembleOptions options)
         {
@@ -150,7 +150,7 @@ namespace AsmStudio.Engine
 
             string[] lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
-            // 解析全部行；标签名收集到假表（偏移 0，让分支/数据引用成立）
+            // 解析全部行；标签名收集到假表（偏移 0，让分支/data引用成立）
             Dictionary<string, ulong> fakeLabels = new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
             List<Statement> parsed = new List<Statement>();
             for (int i = 0; i < lines.Length; i++)
@@ -171,7 +171,7 @@ namespace AsmStudio.Engine
 
             foreach (Statement st in parsed)
             {
-                // 每行独立编码；所有标签都"已定义"且偏移为 0 → 分支 rel 极小不会溢出
+                // 每行独立编码；所有标签都"already defined"且偏移为 0 → 分支 rel 极小不会溢出
                 Encoder enc = new Encoder(options.Arch, 0, options.Symbols, fakeLabels, null, null, 0);
                 try
                 {

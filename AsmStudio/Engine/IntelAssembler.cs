@@ -9,7 +9,7 @@ namespace AsmStudio.Engine
     internal static class IntelParser
     {
         /// <summary>
-        /// 解析一行 Intel 汇编。成功返回 true 并填充 stmt。
+        /// 解析一Row Intel 汇编。成功返回 true 并填充 stmt。
         /// stmt.LabelDef 允许为空；空行/纯注释/纯标签行时 Mnemonic 可为 null。
         /// </summary>
         public static bool ParseLine(string line, int lineNo, Statement stmt, List<AsmError> errors)
@@ -26,7 +26,7 @@ namespace AsmStudio.Engine
                 {
                     if (stmt.LabelDef != null)
                     {
-                        errors.Add(new AsmError(lineNo, 1, "一行内只能定义一个标签"));
+                        errors.Add(new AsmError(lineNo, 1, "Only one label can be defined per line"));
                         return false;
                     }
                     stmt.LabelDef = ident;
@@ -58,14 +58,14 @@ namespace AsmStudio.Engine
                 }
                 else if (low == "notrack" || low == "data16" || low == "addr16")
                 {
-                    errors.Add(new AsmError(lineNo, 1, "不支持的前缀: " + ident));
+                    errors.Add(new AsmError(lineNo, 1, "Unsupported prefix: " + ident));
                     return false;
                 }
                 else break;
                 text = text.Substring(ident.Length).Trim();
                 if (text.Length == 0)
                 {
-                    errors.Add(new AsmError(lineNo, 1, "前缀后缺少指令"));
+                    errors.Add(new AsmError(lineNo, 1, "Missing instruction after prefix"));
                     return false;
                 }
             }
@@ -74,7 +74,7 @@ namespace AsmStudio.Engine
             string mnem = Lexer.ReadIdent(text, 0);
             if (mnem == null)
             {
-                errors.Add(new AsmError(lineNo, 1, "无法识别的指令"));
+                errors.Add(new AsmError(lineNo, 1, "Unknown instruction"));
                 return false;
             }
             stmt.Mnemonic = mnem.ToLowerInvariant();
@@ -90,7 +90,7 @@ namespace AsmStudio.Engine
                     string field = f.Key.Trim();
                     if (field.Length == 0)
                     {
-                        errors.Add(new AsmError(lineNo, f.Value, "空操作数"));
+                        errors.Add(new AsmError(lineNo, f.Value, "Empty operand"));
                         return false;
                     }
                     // 字符串字面量（db 用）
@@ -114,7 +114,7 @@ namespace AsmStudio.Engine
                           stmt.Mnemonic == "dd" || stmt.Mnemonic == "dq";
             if (stmt.Operands.Count > 3 && !isData)
             {
-                errors.Add(new AsmError(lineNo, stmt.Column, "操作数过多"));
+                errors.Add(new AsmError(lineNo, stmt.Column, "Too many operands"));
                 return false;
             }
             return true;
@@ -176,7 +176,7 @@ namespace AsmStudio.Engine
             if (matchedSize && s.Length == 0)
             {
                 errCol = baseCol;
-                errors.Add(new AsmError(lineNo, baseCol, "尺寸声明后缺少内存表达式"));
+                errors.Add(new AsmError(lineNo, baseCol, "Missing memory expression after size specifier"));
                 return false;
             }
 
@@ -192,7 +192,7 @@ namespace AsmStudio.Engine
                 if (close < 0)
                 {
                     errCol = baseCol;
-                    errors.Add(new AsmError(lineNo, baseCol, "缺少 ']'"));
+                    errors.Add(new AsmError(lineNo, baseCol, "Missing ']'"));
                     return false;
                 }
                 MemOperand mem = new MemOperand();
@@ -207,7 +207,7 @@ namespace AsmStudio.Engine
             if (seg != SegKind.None)
             {
                 errCol = baseCol;
-                errors.Add(new AsmError(lineNo, baseCol, "段前缀只能用于内存操作数"));
+                errors.Add(new AsmError(lineNo, baseCol, "Segment prefix is only valid on memory operands"));
                 return false;
             }
 
@@ -218,7 +218,7 @@ namespace AsmStudio.Engine
                 if (size != 0 && size != ri.Size)
                 {
                     errCol = baseCol;
-                    errors.Add(new AsmError(lineNo, baseCol, "尺寸声明与寄存器尺寸不匹配"));
+                    errors.Add(new AsmError(lineNo, baseCol, "Size specifier does not match register size"));
                     return false;
                 }
                 op = Operand.RegOp(new Reg { Index = ri.Index, Size = ri.Size, High = ri.High });
@@ -241,11 +241,11 @@ namespace AsmStudio.Engine
             }
 
             errCol = baseCol;
-            errors.Add(new AsmError(lineNo, baseCol, "无法识别的操作数: " + text));
+            errors.Add(new AsmError(lineNo, baseCol, "Unknown operand: " + text));
             return false;
         }
 
-        /// <summary>解析 [] 内的内存表达式: base + index*scale + disp (+ rel/abs 关键字)</summary>
+        /// <summary>解析 [] 内的memory表达式: base + index*scale + disp (+ rel/abs 关键字)</summary>
         private static bool ParseMemExpr(string expr, int baseCol, int lineNo,
             MemOperand mem, List<AsmError> errors, out int errCol)
         {
@@ -275,7 +275,7 @@ namespace AsmStudio.Engine
             if (s.Length == 0)
             {
                 errCol = baseCol;
-                errors.Add(new AsmError(lineNo, baseCol, "空的内存表达式"));
+                errors.Add(new AsmError(lineNo, baseCol, "Empty memory expression"));
                 return false;
             }
 
@@ -301,7 +301,7 @@ namespace AsmStudio.Engine
                 if (t.Length == 0)
                 {
                     errCol = term.Value;
-                    errors.Add(new AsmError(lineNo, term.Value, "空的地址项"));
+                    errors.Add(new AsmError(lineNo, term.Value, "Empty address term"));
                     return false;
                 }
 
@@ -320,13 +320,13 @@ namespace AsmStudio.Engine
                         if (ri.Size != 4 && ri.Size != 8)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "变址寄存器必须是 32/64 位"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Index register must be 32/64-bit"));
                             return false;
                         }
                         if (!Lexer.TryParseNumber(b, out scaleNum))
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "比例系数必须是数字"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Scale must be a number"));
                             return false;
                         }
                         scale = (int)scaleNum;
@@ -337,13 +337,13 @@ namespace AsmStudio.Engine
                         if (ri.Size != 4 && ri.Size != 8)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "变址寄存器必须是 32/64 位"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Index register must be 32/64-bit"));
                             return false;
                         }
                         if (!Lexer.TryParseNumber(a, out scaleNum))
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "比例系数必须是数字"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Scale must be a number"));
                             return false;
                         }
                         scale = (int)scaleNum;
@@ -351,19 +351,19 @@ namespace AsmStudio.Engine
                     else
                     {
                         errCol = term.Value;
-                        errors.Add(new AsmError(lineNo, term.Value, "乘法项必须包含一个寄存器"));
+                        errors.Add(new AsmError(lineNo, term.Value, "Scale term must contain one register"));
                         return false;
                     }
                     if (scale != 1 && scale != 2 && scale != 4 && scale != 8)
                     {
                         errCol = term.Value;
-                        errors.Add(new AsmError(lineNo, term.Value, "比例系数只能是 1/2/4/8"));
+                        errors.Add(new AsmError(lineNo, term.Value, "Scale must be 1/2/4/8"));
                         return false;
                     }
                     if (negative)
                     {
                         errCol = term.Value;
-                        errors.Add(new AsmError(lineNo, term.Value, "变址项不能取负"));
+                        errors.Add(new AsmError(lineNo, term.Value, "Index term cannot be negative"));
                         return false;
                     }
                     regCount++;
@@ -376,7 +376,7 @@ namespace AsmStudio.Engine
                         if (mem.IndexReg >= 0)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "变址寄存器过多"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Too many index registers"));
                             return false;
                         }
                         mem.IndexReg = regIdx;
@@ -393,13 +393,13 @@ namespace AsmStudio.Engine
                         if (negative)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "寄存器项不能取负"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Register term cannot be negative"));
                             return false;
                         }
                         if (ri.Size != 4 && ri.Size != 8)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "基址/变址寄存器必须是 32/64 位"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Base/index registers must be 32/64-bit"));
                             return false;
                         }
                         regCount++;
@@ -412,7 +412,7 @@ namespace AsmStudio.Engine
                             if (mem.IndexReg >= 0)
                             {
                                 errCol = term.Value;
-                                errors.Add(new AsmError(lineNo, term.Value, "变址寄存器过多"));
+                                errors.Add(new AsmError(lineNo, term.Value, "Too many index registers"));
                                 return false;
                             }
                             mem.IndexReg = ri.Index;
@@ -428,13 +428,13 @@ namespace AsmStudio.Engine
                         if (symCount > 1)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "地址表达式中符号过多"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Too many symbols in the address expression"));
                             return false;
                         }
                         if (negative)
                         {
                             errCol = term.Value;
-                            errors.Add(new AsmError(lineNo, term.Value, "符号地址不能取负"));
+                            errors.Add(new AsmError(lineNo, term.Value, "Symbol address cannot be negative"));
                             return false;
                         }
                         mem.DispSymbol = t;
@@ -442,7 +442,7 @@ namespace AsmStudio.Engine
                     else
                     {
                         errCol = term.Value;
-                        errors.Add(new AsmError(lineNo, term.Value, "无法识别的地址项: " + t));
+                        errors.Add(new AsmError(lineNo, term.Value, "Unknown address term: " + t));
                         return false;
                     }
                 }
@@ -452,7 +452,7 @@ namespace AsmStudio.Engine
             if (regCount == 0 && symCount == 0 && disp == 0)
             {
                 errCol = baseCol;
-                errors.Add(new AsmError(lineNo, baseCol, "内存表达式不能为空"));
+                errors.Add(new AsmError(lineNo, baseCol, "Memory expression cannot be empty"));
                 return false;
             }
             mem.Disp = disp;
@@ -494,7 +494,7 @@ namespace AsmStudio.Engine
             return next == ' ' || next == '\t' || next == ':' || next == '[';
         }
 
-        /// <summary>尝试在 s 起始处匹配 "段名:"；成功则经词库给出 SegKind 与冒号后的剩余文本</summary>
+        /// <summary>尝试在 s 起始处匹配 "segment:"；成功则经词库给出 SegKind 与冒号后的剩余文本</summary>
         private static bool TrySplitSegmentPrefix(string s, out SegKind seg, out string rest)
         {
             seg = SegKind.None;

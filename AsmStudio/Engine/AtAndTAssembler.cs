@@ -23,7 +23,7 @@ namespace AsmStudio.Engine
                 {
                     if (stmt.LabelDef != null)
                     {
-                        errors.Add(new AsmError(lineNo, 1, "一行内只能定义一个标签"));
+                        errors.Add(new AsmError(lineNo, 1, "Only one label can be defined per line"));
                         return false;
                     }
                     stmt.LabelDef = ident;
@@ -48,7 +48,7 @@ namespace AsmStudio.Engine
                 text = text.Substring(ident.Length).Trim();
                 if (text.Length == 0)
                 {
-                    errors.Add(new AsmError(lineNo, 1, "前缀后缺少指令"));
+                    errors.Add(new AsmError(lineNo, 1, "Missing instruction after prefix"));
                     return false;
                 }
             }
@@ -57,7 +57,7 @@ namespace AsmStudio.Engine
             string mnem = Lexer.ReadIdent(text, 0);
             if (mnem == null)
             {
-                errors.Add(new AsmError(lineNo, 1, "无法识别的指令"));
+                errors.Add(new AsmError(lineNo, 1, "Unknown instruction"));
                 return false;
             }
             stmt.Column = 1;
@@ -118,7 +118,7 @@ namespace AsmStudio.Engine
                     string field = f.Key.Trim();
                     if (field.Length == 0)
                     {
-                        errors.Add(new AsmError(lineNo, f.Value, "空操作数"));
+                        errors.Add(new AsmError(lineNo, f.Value, "Empty operand"));
                         return false;
                     }
                     // 字符串字面量（db 用）
@@ -142,7 +142,7 @@ namespace AsmStudio.Engine
                           stmt.Mnemonic == "dd" || stmt.Mnemonic == "dq";
             if (stmt.Operands.Count > 3 && !isData)
             {
-                errors.Add(new AsmError(lineNo, stmt.Column, "操作数过多"));
+                errors.Add(new AsmError(lineNo, stmt.Column, "Too many operands"));
                 return false;
             }
 
@@ -154,7 +154,7 @@ namespace AsmStudio.Engine
                 stmt.Operands[1] = tmp;
             }
 
-            // 尺寸后缀 → 未声明尺寸的内存操作数
+            // 尺寸后缀 → 未声明尺寸的memory操作数
             if (stmt.SizeHint != 0)
             {
                 foreach (Operand o in stmt.Operands)
@@ -247,7 +247,7 @@ namespace AsmStudio.Engine
                         case "gs": seg = SegKind.Gs; break;
                         default:
                             errCol = baseCol;
-                            errors.Add(new AsmError(lineNo, baseCol, "未知段寄存器: %" + segName));
+                            errors.Add(new AsmError(lineNo, baseCol, "Unknown segment register: %" + segName));
                             return false;
                     }
                     s = s.Substring(ci + 1).Trim();
@@ -279,14 +279,14 @@ namespace AsmStudio.Engine
                 else
                 {
                     errCol = baseCol;
-                    errors.Add(new AsmError(lineNo, baseCol, "无法识别的立即数: " + s));
+                    errors.Add(new AsmError(lineNo, baseCol, "Unknown immediate: " + s));
                     return false;
                 }
                 op.Indirect = indirect;
                 return true;
             }
 
-            // 内存 disp(base,index,scale) / label(%rip)
+            // memory disp(base,index,scale) / label(%rip)
             int pi = s.IndexOf('(');
             if (pi >= 0)
             {
@@ -294,7 +294,7 @@ namespace AsmStudio.Engine
                 if (close < 0)
                 {
                     errCol = baseCol;
-                    errors.Add(new AsmError(lineNo, baseCol, "缺少 ')'"));
+                    errors.Add(new AsmError(lineNo, baseCol, "Missing ')'"));
                     return false;
                 }
                 MemOperand mem = new MemOperand();
@@ -315,7 +315,7 @@ namespace AsmStudio.Engine
                         if (mem.DispSymbol != null)
                         {
                             errCol = baseCol;
-                            errors.Add(new AsmError(lineNo, baseCol, "位移中符号过多"));
+                            errors.Add(new AsmError(lineNo, baseCol, "Too many symbols in displacement"));
                             return false;
                         }
                         mem.DispSymbol = dispPart;
@@ -323,7 +323,7 @@ namespace AsmStudio.Engine
                     else
                     {
                         errCol = baseCol;
-                        errors.Add(new AsmError(lineNo, baseCol, "无法识别的位移: " + dispPart));
+                        errors.Add(new AsmError(lineNo, baseCol, "Unknown displacement: " + dispPart));
                         return false;
                     }
                 }
@@ -334,7 +334,7 @@ namespace AsmStudio.Engine
 
             if (seg != SegKind.None)
             {
-                // %fs:0x18 / %fs:symbol → 段前缀 + 绝对地址内存
+                // %fs:0x18 / %fs:symbol → 段前缀 + 绝对地址memory
                 long segNum;
                 if (Lexer.TryParseNumber(s, out segNum))
                 {
@@ -356,16 +356,16 @@ namespace AsmStudio.Engine
                     return true;
                 }
                 errCol = baseCol;
-                errors.Add(new AsmError(lineNo, baseCol, "段前缀后必须是内存表达式"));
+                errors.Add(new AsmError(lineNo, baseCol, "Segment prefix must be followed by a memory expression"));
                 return false;
             }
 
-            // 裸符号 = 符号处内存（disp=symbol, 无 base）
+            // 裸符号 = 符号处memory（disp=symbol, 无 base）
             long n2;
             if (Lexer.TryParseNumber(s, out n2))
             {
                 errCol = baseCol;
-                errors.Add(new AsmError(lineNo, baseCol, "裸数字操作数无效（立即数需 $ 前缀）"));
+                errors.Add(new AsmError(lineNo, baseCol, "Bare number operand invalid (immediates need the $ prefix)"));
                 return false;
             }
             if (s.Length > 0 && Lexer.IsIdentStart(s[0]) && Lexer.ReadIdent(s, 0) == s)
@@ -378,7 +378,7 @@ namespace AsmStudio.Engine
             }
 
             errCol = baseCol;
-            errors.Add(new AsmError(lineNo, baseCol, "无法识别的操作数: " + text));
+            errors.Add(new AsmError(lineNo, baseCol, "Unknown operand: " + text));
             return false;
         }
 
@@ -390,7 +390,7 @@ namespace AsmStudio.Engine
             string[] parts = inner.Split(',');
             if (parts.Length > 3)
             {
-                errors.Add(new AsmError(lineNo, 1, "内存表达式最多三段 (base,index,scale)"));
+                errors.Add(new AsmError(lineNo, 1, "Memory expression has at most three parts (base,index,scale)"));
                 return false;
             }
             string basePart = parts[0].Trim();
@@ -408,7 +408,7 @@ namespace AsmStudio.Engine
                     {
                         if (ri.Size != 4 && ri.Size != 8)
                         {
-                            errors.Add(new AsmError(lineNo, 1, "基址寄存器必须是 32/64 位"));
+                            errors.Add(new AsmError(lineNo, 1, "Base register must be 32/64-bit"));
                             return false;
                         }
                         mem.BaseReg = ri.Index;
@@ -416,7 +416,7 @@ namespace AsmStudio.Engine
                 }
                 else
                 {
-                    errors.Add(new AsmError(lineNo, 1, "基址段无效: " + basePart));
+                    errors.Add(new AsmError(lineNo, 1, "Invalid base part: " + basePart));
                     return false;
                 }
             }
@@ -428,12 +428,12 @@ namespace AsmStudio.Engine
                     InstructionTables.RegInfo ri;
                     if (!InstructionTables.TryGetRegAtt(idxPart, out ri))
                     {
-                        errors.Add(new AsmError(lineNo, 1, "变址段无效: " + idxPart));
+                        errors.Add(new AsmError(lineNo, 1, "Invalid index part: " + idxPart));
                         return false;
                     }
                     if (ri.Size != 4 && ri.Size != 8)
                     {
-                        errors.Add(new AsmError(lineNo, 1, "变址寄存器必须是 32/64 位"));
+                        errors.Add(new AsmError(lineNo, 1, "Index register must be 32/64-bit"));
                         return false;
                     }
                     mem.IndexReg = ri.Index;
@@ -447,7 +447,7 @@ namespace AsmStudio.Engine
                     long sc;
                     if (!Lexer.TryParseNumber(scPart, out sc) || (sc != 1 && sc != 2 && sc != 4 && sc != 8))
                     {
-                        errors.Add(new AsmError(lineNo, 1, "比例系数只能是 1/2/4/8"));
+                        errors.Add(new AsmError(lineNo, 1, "Scale must be 1/2/4/8"));
                         return false;
                     }
                     mem.Scale = (int)sc;

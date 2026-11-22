@@ -6,14 +6,14 @@ using System.Text;
 
 namespace AsmStudio.Engine
 {
-    /// <summary>汇编语法风格</summary>
+    /// <summary>汇编Syntax Style</summary>
     public enum SyntaxKind
     {
         Intel,   // mov eax, [ebx+esi*4+8] / mov dword ptr [x], 5
         Att      // movl 0x8(%esi,%ebx,4), %eax / movq $5, %rax
     }
 
-    /// <summary>目标架构</summary>
+    /// <summary>Target Arch</summary>
     public enum ArchKind
     {
         X86,     // 32 位
@@ -39,8 +39,8 @@ namespace AsmStudio.Engine
         public override string ToString()
         {
             if (Column > 0)
-                return string.Format("行 {0}, 列 {1}: {2}", Line, Column, Message);
-            return string.Format("行 {0}: {1}", Line, Message);
+                return string.Format("Row {0}, Col {1}: {2}", Line, Column, Message);
+            return string.Format("Row {0}: {1}", Line, Message);
         }
     }
 
@@ -61,7 +61,7 @@ namespace AsmStudio.Engine
         public int RexBit { get { return (Index >> 3) & 1; } }
     }
 
-    /// <summary>内存操作数: [base + index*scale + disp]</summary>
+    /// <summary>memory操作数: [base + index*scale + disp]</summary>
     public sealed class MemOperand
     {
         public int BaseReg = -1;        // Reg.Index，-1 = 无
@@ -84,11 +84,11 @@ namespace AsmStudio.Engine
         public Reg Reg;                 // Kind=Register
         public long Imm;                // Kind=Immediate
         public MemOperand Mem;          // Kind=Memory
-        public string LabelName;        // 跳转/调用目标 或 符号立即数
+        public string LabelName;        // 跳转/调用目标 或 symbol immediate
         public int Size;                // 已知操作数尺寸（字节），0=未知
         /// <summary>AT&T 的 '*' 间接跳转/调用标记</summary>
         public bool Indirect;
-        /// <summary>db 字符串数据</summary>
+        /// <summary>db 字符串data</summary>
         public bool IsString;
         public string StrData;
 
@@ -124,7 +124,7 @@ namespace AsmStudio.Engine
         }
     }
 
-    /// <summary>一条已解析的语句（指令/数据/标签）</summary>
+    /// <summary>一条已解析的语句（指令/data/标签）</summary>
     public sealed class Statement
     {
         public int Line;
@@ -143,7 +143,7 @@ namespace AsmStudio.Engine
         internal bool BranchForce32;    // 后向短跳溢出后强制 rel32
         internal int LabelDefIndex = -1;
 
-        /// <summary>是否为数据定义指令 db/dw/dd/dq</summary>
+        /// <summary>是否为data定义指令 db/dw/dd/dq</summary>
         public bool IsData
         {
             get
@@ -153,7 +153,7 @@ namespace AsmStudio.Engine
         }
     }
 
-    /// <summary>外部符号表（目标进程公开函数/数据地址）</summary>
+    /// <summary>外部符号表（目标进程公开函数/data地址）</summary>
     public sealed class SymbolTable
     {
         private readonly Dictionary<string, ulong> _map =
@@ -181,7 +181,7 @@ namespace AsmStudio.Engine
         public SymbolTable Symbols;
         /// <summary>
         /// ret 重定向网关地址（远程沙箱执行用，0 = 关闭）。
-        /// 非零时所有无操作数 ret 编码为 "把该地址写入 [rsp] 再 ret"，
+        /// 非零时所有无操作数 ret 编码为 "write that address into [rsp] then ret"，
         /// 避免 naive 内联代码的 ret 槽与其调用的 home space 冲突。
         /// </summary>
         public ulong RetTrapAddress;

@@ -1,13 +1,13 @@
 // Encoder.cs - x86/x64 指令编码核心
 // 输入：已归一化的 Statement（Intel 顺序），输出：机器码字节。
 // 支持前缀(lock/rep/seg/66)、REX、ModRM/SIB 全寻址、moffs、SIB 绝对寻址(x64 [abs]/数值/外部符号)、
-// RIP 相对寻址、分支前向 rel32/后向 rel8 自动选择、符号立即数、ret 网关改写等。
+// RIP 相对寻址、分支前向 rel32/后向 rel8 自动选择、symbol immediate、ret 网关改写等。
 using System;
 using System.Collections.Generic;
 
 namespace AsmStudio.Engine
 {
-    /// <summary>编码期错误（由 Assembler 捕获转为 AsmError）</summary>
+    /// <summary>编码期Error（由 Assembler 捕获转为 AsmError）</summary>
     internal sealed class EncodeException : Exception
     {
         public readonly int Line;
@@ -132,9 +132,9 @@ namespace AsmStudio.Engine
         {
             int sa = OperandSize(a), sb = OperandSize(b);
             if (sa != 0 && sb != 0 && sa != sb)
-                Fail(string.Format("{0}: 操作数尺寸不匹配 ({1} 字节 vs {2} 字节)", mnem, sa, sb));
+                Fail(string.Format("{0}: operand size mismatch ({1} bytes vs {2} bytes)", mnem, sa, sb));
             int s = sa != 0 ? sa : sb;
-            if (s == 0) Fail(string.Format("{0}: 无法确定操作数尺寸（内存操作数需要 byte/word/dword/qword ptr 或尺寸后缀）", mnem));
+            if (s == 0) Fail(string.Format("{0}: cannot determine operand size (memory operand needs byte/word/dword/qword ptr or a size suffix)", mnem));
             return s;
         }
 
@@ -145,13 +145,13 @@ namespace AsmStudio.Engine
             if (_labels != null && _labels.TryGetValue(name, out v))
             {
                 if (_base == 0)
-                    Fail("立即数使用内部标签 '" + name + "' 需要已知 BaseAddress");
+                    Fail("Immediate uses internal label '" + name + "' requires a known BaseAddress");
                 return _base + v;
             }
             if (_allLabelNames != null && _allLabelNames.Contains(name))
                 return 0;   // 前向标签：第一遍占位，下一遍取真实值（尺寸不变）
             if (_symbols.TryGetValue(name, out v)) return v;
-            Fail("未定义的符号: '" + name + "'");
+            Fail("Undefined symbol: '" + name + "'");
             return 0;
         }
 
@@ -241,19 +241,19 @@ namespace AsmStudio.Engine
             Emit((byte)(0xC0 | (regField3 << 3) | rmReg.Code));
         }
 
-        /// <summary>发射内存操作数的 ModRM(+SIB)+位移。</summary>
+        /// <summary>发射memory操作数的 ModRM(+SIB)+位移。</summary>
         private void EmitMemModRm(MemOperand m, int regField3, int regRexR)
         {
             if (IsX64 && m.RipRelative)
             {
                 // [rel label] → mod=00 rm=101 disp32（相对 RIP，基址无关）
-                if (m.DispSymbol == null) Fail("[rel] 需要标签符号");
+                if (m.DispSymbol == null) Fail("[rel] requires a label symbol");
                 ulong v;
                 bool internalLabel;
                 if (!TryResolveDisp(m.DispSymbol, out v, out internalLabel))
-                    Fail("未定义的符号: '" + m.DispSymbol + "'");
+                    Fail("Undefined symbol: '" + m.DispSymbol + "'");
                 if (!internalLabel)
-                    Fail("[rel] 只能用于内部标签（外部符号请用 mov+寄存器间接或 [abs]）");
+                    Fail("[rel] is only valid for internal labels (for external symbols use mov+register indirection or [abs])");
                 long rel = (long)v - (long)_base - (long)(_startOffset + _buf.Count + 4);
                 Emit((byte)(0x05 | (regField3 << 3)));
                 EmitDword(rel);
@@ -273,9 +273,9 @@ namespace AsmStudio.Engine
                     ulong v;
                     bool internalLabel;
                     if (!TryResolveDisp(m.DispSymbol, out v, out internalLabel))
-                        Fail("未定义的符号: '" + m.DispSymbol + "'");
+                        Fail("Undefined symbol: '" + m.DispSymbol + "'");
                     if (internalLabel && !m.ForceAbs)
-                        Fail("x64 下内部标签请用 [rel 标签]（RIP 相对寻址）");
+                        Fail("on x64 use [rel label] for internal labels (RIP-relative)");
                     disp = (long)v;
                 }
                 else
@@ -289,8 +289,8 @@ namespace AsmStudio.Engine
                     return;
                 }
                 if (!m.ForceAbs)
-                    Fail("x64 绝对地址超出 32 位范围：mov al/eax/rax 支持 moffs（[abs 符号]），"
-                        + "其余寄存器请用 mov rax, 符号 + [rax] 间接寻址");
+                    Fail("x64 absolute address exceeds 32 bits: mov al/eax/rax supports moffs ([abs symbol]), "
+                        + "for other registers use mov rax, symbol + [rax] indirection");
                 EmitAbsoluteX64(m, regField3);
                 return;
             }
@@ -306,13 +306,13 @@ namespace AsmStudio.Engine
 
             if (hasIndex && hasBase)
             {
-                if (m.IndexReg == 4 && IsX64) Fail("rsp 不能作为变址寄存器");
-                if (!IsX64 && m.IndexReg == 4) Fail("esp 不能作为变址寄存器");
+                if (m.IndexReg == 4 && IsX64) Fail("rsp cannot be an index register");
+                if (!IsX64 && m.IndexReg == 4) Fail("esp cannot be an index register");
                 long disp = ResolveMemDisp(m);
                 int mod;
                 if (m.BaseReg % 8 == 5 && (IsX64 || m.BaseReg == 5))
                 {
-                    // rbp/r13 作基址：mod=00 + SIB base=101 表示"无基址"，必须用 disp
+                    // rbp/r13 作基址：mod=00 + SIB base=101 表示"no base"，必须用 disp
                     mod = (disp >= -128 && disp <= 127) ? 1 : 2;
                 }
                 else if (disp == 0 && m.DispSymbol == null)
@@ -333,8 +333,8 @@ namespace AsmStudio.Engine
             int breg = hasBase ? m.BaseReg : m.IndexReg;
             if (!hasBase && hasIndex)
             {
-                // 仅变址无基址 → SIB 无基址形式 (mod=0, base=101)
-                if (breg == 4) Fail("rsp/esp 不能作为变址寄存器");
+                // 仅变址no base → SIB no base形式 (mod=0, base=101)
+                if (breg == 4) Fail("rsp/esp cannot be an index register");
                 long disp = ResolveMemDisp(m);
                 int sib = (ScaleBits(m.Scale) << 6) | ((breg % 8) << 3) | 0x05;
                 Emit((byte)((0x00 << 6) | (regField3 << 3) | 0x04));
@@ -359,7 +359,7 @@ namespace AsmStudio.Engine
             }
             if (breg == 5 || breg == 13)
             {
-                if (!IsX64 && breg == 13) Fail("x86 下无效寄存器");
+                if (!IsX64 && breg == 13) Fail("invalid register on x86");
                 // rbp/ebp 作基址：mod=00+rm101 会被解释为 disp32 绝对，必须 disp8=0
                 long disp = ResolveMemDisp(m);
                 int mod = (disp >= -128 && disp <= 127) ? 1 : 2;
@@ -388,8 +388,8 @@ namespace AsmStudio.Engine
             }
             else
             {
-                Fail("x64 绝对地址超出 32 位范围：仅 mov al/eax/rax 支持 moffs 形式（mov rax,[abs 符号]），"
-                    + "其余请用 mov rax, 符号 + [rax] 间接寻址");
+                Fail("x64 absolute address exceeds 32 bits: only mov al/eax/rax supports the moffs form (mov rax,[abs symbol]), "
+                    + "for others use mov rax, symbol + [rax] indirection");
             }
         }
 
@@ -399,7 +399,7 @@ namespace AsmStudio.Engine
             else if (mod == 2) EmitDword(disp);
         }
 
-        /// <summary>内存位移取值（数值 + 符号，可混合）</summary>
+        /// <summary>memory位移取值（数值 + 符号，可混合）</summary>
         private long ResolveMemDisp(MemOperand m)
         {
             long disp = m.Disp;
@@ -413,9 +413,9 @@ namespace AsmStudio.Engine
             ulong v;
             bool internalLabel;
             if (!TryResolveDisp(m.DispSymbol, out v, out internalLabel))
-                Fail("未定义的符号: '" + m.DispSymbol + "'");
+                Fail("Undefined symbol: '" + m.DispSymbol + "'");
             if (internalLabel && _base == 0 && !m.RipRelative && !IsX64)
-                Fail("绝对寻址使用内部标签 '" + m.DispSymbol + "' 需要已知 BaseAddress");
+                Fail("Absolute addressing uses internal label '" + m.DispSymbol + "' requires a known BaseAddress");
             return (long)v;
         }
 
@@ -437,7 +437,7 @@ namespace AsmStudio.Engine
         {
             string m = st.Mnemonic;
 
-            // 数据定义
+            // data定义
             if (st.IsData) { EncodeData(st); return; }
 
             int n = st.Operands.Count;
@@ -466,14 +466,14 @@ namespace AsmStudio.Engine
                     case "cwde": Emit(0x98); return;
                     case "cwd": Emit(0x66, 0x99); return;
                     case "cdq": Emit(0x99); return;
-                    case "cdqe": if (!IsX64) Fail("cdqe 仅存在于 x64"); Emit(0x48, 0x98); return;
-                    case "cqo": if (!IsX64) Fail("cqo 仅存在于 x64"); Emit(0x48, 0x99); return;
+                    case "cdqe": if (!IsX64) Fail("cdqe only exists on x64"); Emit(0x48, 0x98); return;
+                    case "cqo": if (!IsX64) Fail("cqo only exists on x64"); Emit(0x48, 0x99); return;
                     case "syscall":
-                        if (!IsX64) Fail("syscall 仅存在于 x64");
+                        if (!IsX64) Fail("syscall only exists on x64");
                         Emit(0x0F, 0x05); return;
                     case "sysenter": Emit(0x0F, 0x34); return;
                     default:
-                        Fail("指令 '" + m + "' 需要操作数或不存在");
+                        Fail("instruction '" + m + "' needs an operand or does not exist");
                         return;
                 }
             }
@@ -482,7 +482,7 @@ namespace AsmStudio.Engine
             if (m == "ret" && n == 1 && IsImm(st.Operands[0]))
             {
                 long v = ImmValue(st.Operands[0]);
-                if (v < 0 || v > 65535) Fail("ret 立即数超出 16 位范围");
+                if (v < 0 || v > 65535) Fail("ret immediate exceeds 16-bit range");
                 Emit(0xC2); EmitWord(v);
                 return;
             }
@@ -490,7 +490,7 @@ namespace AsmStudio.Engine
             if (m == "int" && n == 1 && IsImm(st.Operands[0]))
             {
                 long v = ImmValue(st.Operands[0]);
-                if (v < 0 || v > 255) Fail("int 立即数超出 8 位范围");
+                if (v < 0 || v > 255) Fail("int immediate exceeds 8-bit range");
                 Emit(0xCD); EmitI8(v);
                 return;
             }
@@ -516,8 +516,8 @@ namespace AsmStudio.Engine
         private void EmitStringOp(Statement st, string m)
         {
             int size = StringSize(st);
-            if (m == "movsd" && IsX64) Fail("x64 下请使用 movsq");
-            if (m == "cmpsd" && IsX64) Fail("x64 下请使用 cmpsq");
+            if (m == "movsd" && IsX64) Fail("on x64 use movsq");
+            if (m == "cmpsd" && IsX64) Fail("on x64 use cmpsq");
 
             byte opcode;
             switch (m)
@@ -537,7 +537,7 @@ namespace AsmStudio.Engine
         }
 
         /// <summary>
-        /// ret 编码：RetTrapAddress 非零时改写为 "把网关地址写入 [rsp] 再 ret"
+        /// ret 编码：RetTrapAddress 非零时改写为 "write the gate address into [rsp] then ret"
         /// （不占用任何寄存器，解决 naive 内联代码的 ret 槽与 home space 冲突）。
         /// </summary>
         private void EmitRet()
@@ -574,8 +574,8 @@ namespace AsmStudio.Engine
                     Reg r;
                     if (IsReg(o, out r))
                     {
-                        if (r.Size == 1) Fail("push 不支持 8 位寄存器");
-                        if (!IsX64 && r.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                        if (r.Size == 1) Fail("push does not support 8-bit registers");
+                        if (!IsX64 && r.Size == 8) Fail("invalid 64-bit register on x86");
                         // push r 在 x64 下默认 64 位，无需 REX.W
                         EmitLegacyAndRex(false, 0, 0, r.RexBit, SegKind.None, r.Size == 2, st.RepKind, false);
                         Emit((byte)(0x50 + r.Code));
@@ -585,7 +585,7 @@ namespace AsmStudio.Engine
                     {
                         int size = o.Size;
                         if (size == 0) size = IsX64 ? 8 : 4;    // 栈槽尺寸无歧义，可缺省
-                        if (!IsX64 && size == 8) Fail("x86 下无效的 qword");
+                        if (!IsX64 && size == 8) Fail("invalid qword on x86");
                         EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                             o.Mem.Segment, size == 2, st.RepKind, false);
                         EmitMemModRm(o.Mem, 6, 0);
@@ -600,10 +600,10 @@ namespace AsmStudio.Engine
                             if (ImmFitsSigned(v, 2) && o.Size == 2) { Emit(0x66, 0x68); EmitWord(v); }
                             else { Emit(0x68); EmitDword(v); }
                         }
-                        else Fail("push 立即数超出 32 位范围");
+                        else Fail("push immediate exceeds 32-bit range");
                         return;
                     }
-                    Fail("无效的 push 操作数");
+                    Fail("Invalid push operand");
                     return;
                 }
                 case "pop":
@@ -611,8 +611,8 @@ namespace AsmStudio.Engine
                     Reg r;
                     if (IsReg(o, out r))
                     {
-                        if (r.Size == 1) Fail("pop 不支持 8 位寄存器");
-                        if (!IsX64 && r.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                        if (r.Size == 1) Fail("pop does not support 8-bit registers");
+                        if (!IsX64 && r.Size == 8) Fail("invalid 64-bit register on x86");
                         EmitLegacyAndRex(false, 0, 0, r.RexBit, SegKind.None, r.Size == 2, st.RepKind, false);
                         Emit((byte)(0x58 + r.Code));
                         return;
@@ -621,13 +621,13 @@ namespace AsmStudio.Engine
                     {
                         int size = o.Size;
                         if (size == 0) size = IsX64 ? 8 : 4;
-                        if (!IsX64 && size == 8) Fail("x86 下无效的 qword");
+                        if (!IsX64 && size == 8) Fail("invalid qword on x86");
                         EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                             o.Mem.Segment, size == 2, st.RepKind, false);
                         EmitMemModRm(o.Mem, 0, 0);
                         return;
                     }
-                    Fail("无效的 pop 操作数");
+                    Fail("Invalid pop operand");
                     return;
                 }
                 case "jmp":
@@ -637,8 +637,8 @@ namespace AsmStudio.Engine
                     bool isCall = m == "call";
                     if (IsReg(o, out r))
                     {
-                        if (r.Size != 4 && r.Size != 8) Fail("间接跳转寄存器必须是 32/64 位");
-                        if (!IsX64 && r.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                        if (r.Size != 4 && r.Size != 8) Fail("Indirect jump register must be 32/64-bit");
+                        if (!IsX64 && r.Size == 8) Fail("invalid 64-bit register on x86");
                         EmitLegacyAndRex(false, 0, 0, r.RexBit, SegKind.None, false, st.RepKind, false);
                         Emit(0xFF);
                         EmitModRmReg(isCall ? 2 : 4, r, r.RexBit);
@@ -648,7 +648,7 @@ namespace AsmStudio.Engine
                     {
                         int size = o.Size;
                         if (size == 0) size = IsX64 ? 8 : 4;    // EIP/RIP 宽度无歧义，可缺省
-                        if (!IsX64 && size == 8) Fail("x86 下无效的 qword");
+                        if (!IsX64 && size == 8) Fail("invalid qword on x86");
                         EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                             o.Mem.Segment, size == 2, st.RepKind, false);
                         Emit(0xFF);
@@ -683,7 +683,7 @@ namespace AsmStudio.Engine
                 Reg r;
                 if (IsReg(o, out r))
                 {
-                    if (r.Size != 1) Fail("setcc 目标必须是 8 位寄存器");
+                    if (r.Size != 1) Fail("setcc destination must be an 8-bit register");
                     EmitLegacyAndRex(false, 0, 0, r.RexBit, SegKind.None, false, st.RepKind, false);
                     Emit(0x0F, (byte)(0x90 + cc));
                     EmitModRmReg(0, r, r.RexBit);
@@ -691,14 +691,14 @@ namespace AsmStudio.Engine
                 }
                 if (IsMem(o))
                 {
-                    if (o.Size != 0 && o.Size != 1) Fail("setcc 内存目标必须是 byte");
+                    if (o.Size != 0 && o.Size != 1) Fail("setcc memory destination must be byte");
                     EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                         o.Mem.Segment, false, st.RepKind, false);
                     Emit(0x0F, (byte)(0x90 + cc));
                     EmitMemModRm(o.Mem, 0, 0);
                     return;
                 }
-                Fail("setcc 目标必须是寄存器或内存");
+                Fail("setcc destination must be a register or memory");
                 return;
             }
         afterSetcc:
@@ -711,7 +711,7 @@ namespace AsmStudio.Engine
                 else if (m == "loope" || m == "loopz") op = 0xE1;
                 else op = 0xE0;
                 Reg loopRegCheck;
-                if (IsReg(o, out loopRegCheck)) Fail("loop 目标只能是标签");
+                if (IsReg(o, out loopRegCheck)) Fail("loop target can only be a label");
                 EmitRel8Branch(op, o, "loop");
                 return;
             }
@@ -731,7 +731,7 @@ namespace AsmStudio.Engine
                 Reg r;
                 if (IsReg(o, out r))
                 {
-                    if (!IsX64 && r.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                    if (!IsX64 && r.Size == 8) Fail("invalid 64-bit register on x86");
                     bool w = r.Size == 8;
                     EmitLegacyAndRex(w, 0, 0, r.RexBit, SegKind.None, r.Size == 2, st.RepKind, CheckLock(st, o));
                     Emit(r.Size == 1 ? (byte)0xF6 : (byte)0xF7);
@@ -741,20 +741,20 @@ namespace AsmStudio.Engine
                 if (IsMem(o))
                 {
                     int size = o.Size;
-                    if (size == 0) Fail(m + ": 内存操作数需要尺寸声明");
+                    if (size == 0) Fail(m + ": memory operand needs a size declaration");
                     bool w = size == 8;
-                    if (!IsX64 && w) Fail("x86 下无效的 qword");
+                    if (!IsX64 && w) Fail("invalid qword on x86");
                     EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                         o.Mem.Segment, size == 2, st.RepKind, CheckLock(st, o));
                     Emit(size == 1 ? (byte)0xF6 : (byte)0xF7);
                     EmitMemModRm(o.Mem, unaryDigit, 0);
                     return;
                 }
-                Fail(m + ": 操作数必须是寄存器或内存");
+                Fail(m + ": operand must be a register or memory");
                 return;
             }
 
-            // ---- inc/dec 单寄存器或内存 ----
+            // ---- inc/dec 单寄存器或memory ----
             if (m == "inc" || m == "dec")
             {
                 EncodeIncDec(st, m, o);
@@ -767,23 +767,23 @@ namespace AsmStudio.Engine
                 Reg r;
                 if (IsReg(o, out r))
                 {
-                    if (r.Size != 4 && r.Size != 8) Fail("bswap 需要 32/64 位寄存器");
-                    if (!IsX64 && r.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                    if (r.Size != 4 && r.Size != 8) Fail("bswap needs a 32/64-bit register");
+                    if (!IsX64 && r.Size == 8) Fail("invalid 64-bit register on x86");
                     EmitLegacyAndRex(r.Size == 8, 0, 0, r.RexBit, SegKind.None, false, st.RepKind, false);
                     Emit(0x0F, (byte)(0xC8 + r.Code));
                     return;
                 }
-                Fail("bswap 目标必须是寄存器");
+                Fail("bswap destination must be a register");
                 return;
             }
 
-            Fail("无法编码指令 '" + m + "'（未知或操作数形式不支持）");
+            Fail("Cannot encode instruction '" + m + "' (unknown or unsupported operand form)");
         }
 
         private void EmitString(Statement st, byte opcode, int size)
         {
             bool w = size == 8;
-            if (!IsX64 && w) Fail("x86 下无效的 qword 串操作");
+            if (!IsX64 && w) Fail("invalid qword string operation on x86");
             EmitLegacyAndRex(w, 0, 0, 0, SegKind.None, size == 2, st.RepKind, false);
             Emit(opcode);
         }
@@ -794,7 +794,7 @@ namespace AsmStudio.Engine
             Reg r;
             if (IsReg(o, out r))
             {
-                if (!IsX64 && r.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && r.Size == 8) Fail("invalid 64-bit register on x86");
                 // x86 32 位寄存器用短形式 40+r / 48+r；x64 无此形式（40+ 即 REX）
                 if (!IsX64 && r.Size == 4 && !r.High)
                 {
@@ -816,16 +816,16 @@ namespace AsmStudio.Engine
             if (IsMem(o))
             {
                 int size = o.Size;
-                if (size == 0) Fail(m + ": 内存操作数需要尺寸声明");
+                if (size == 0) Fail(m + ": memory operand needs a size declaration");
                 bool w = size == 8;
-                if (!IsX64 && w) Fail("x86 下无效的 qword");
+                if (!IsX64 && w) Fail("invalid qword on x86");
                 EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                     o.Mem.Segment, size == 2, st.RepKind, CheckLock(st, o));
                 Emit(size == 1 ? (byte)0xFE : (byte)0xFF);
                 EmitMemModRm(o.Mem, digit, 0);
                 return;
             }
-            Fail(m + ": 操作数必须是寄存器或内存");
+            Fail(m + ": operand must be a register or memory");
         }
 
         // ==================== 双操作数 ====================
@@ -881,9 +881,9 @@ namespace AsmStudio.Engine
             {
                 Reg rd, rs;
                 int ds = CheckSize2(dst, src, m);
-                if (ds == 1) Fail(m + " 不支持 8 位操作数");
-                if (!IsReg(dst, out rd)) Fail(m + ": 第一操作数必须是寄存器");
-                if (!IsX64 && ds == 8) Fail("x86 下无效的 64 位寄存器");
+                if (ds == 1) Fail(m + " does not support 8-bit operands");
+                if (!IsReg(dst, out rd)) Fail(m + ": first operand must be a register");
+                if (!IsX64 && ds == 8) Fail("invalid 64-bit register on x86");
                 EmitLegacyAndRex(ds == 8, rd.RexBit,
                     IsMem(src) ? RexIndexOfMemIndex(src.Mem) : RegHighBit(src),
                     IsMem(src) ? RexIndexOfMemBase(src.Mem) : RegLowBit(src),
@@ -901,8 +901,8 @@ namespace AsmStudio.Engine
                 Reg rd, rs;
                 bool dstIsReg = IsReg(dst, out rd);
                 bool srcIsReg = IsReg(src, out rs);
-                if (!srcIsReg) Fail("xadd: 第二操作数必须是寄存器");
-                if (!IsX64 && ds == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!srcIsReg) Fail("xadd: second operand must be a register");
+                if (!IsX64 && ds == 8) Fail("invalid 64-bit register on x86");
                 EmitLegacyAndRex(ds == 8, rs.RexBit,
                     dstIsReg ? 0 : RexIndexOfMemIndex(dst.Mem),
                     dstIsReg ? (dst.Reg.RexBit) : RexIndexOfMemBase(dst.Mem),
@@ -913,7 +913,7 @@ namespace AsmStudio.Engine
                 return;
             }
 
-            Fail("无法编码指令 '" + m + "'（未知或操作数形式不支持）");
+            Fail("Cannot encode instruction '" + m + "' (unknown or unsupported operand form)");
         }
 
         // ---- mov ----
@@ -932,14 +932,14 @@ namespace AsmStudio.Engine
                 int size = CheckSize2(dst, src, "mov");
                 if (rd.High || rs.High)
                 {
-                    if (size != 1) Fail("AH/CH/DH/BH 只能用于 8 位操作");
-                    if (IsX64 && (rd.Index >= 8 || rs.Index >= 8)) Fail("x64 下 AH 等高字节寄存器不能与 R8-R15 同用");
+                    if (size != 1) Fail("AH/CH/DH/BH are only valid for 8-bit operations");
+                    if (IsX64 && (rd.Index >= 8 || rs.Index >= 8)) Fail("on x64 AH/BH/CH/DH cannot be used together with R8-R15");
                     EmitLegacyAndRex(false, 0, 0, 0, SegKind.None, false, st.RepKind, false);
                     Emit(0x88);
                     EmitModRmReg(rs.Code, rd, 0);
                     return;
                 }
-                if (!IsX64 && (rd.Size == 8 || rs.Size == 8)) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && (rd.Size == 8 || rs.Size == 8)) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rs.RexBit, 0, rd.RexBit, SegKind.None, size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0x88 : (byte)0x89);
@@ -949,7 +949,7 @@ namespace AsmStudio.Engine
             if (dstReg && IsMem(src))
             {
                 int size = CheckSize2(dst, src, "mov");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rd.RexBit, RexIndexOfMemIndex(src.Mem), RexIndexOfMemBase(src.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -960,7 +960,7 @@ namespace AsmStudio.Engine
             if (IsMem(dst) && srcReg)
             {
                 int size = CheckSize2(dst, src, "mov");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rs.RexBit, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -970,11 +970,11 @@ namespace AsmStudio.Engine
             }
             if (dstReg && IsImm(src))
             {
-                if (!IsX64 && rd.Size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && rd.Size == 8) Fail("invalid 64-bit register on x86");
                 long v = ImmValue(src);
                 if (rd.High)
                 {
-                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8 位立即数溢出");
+                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
                     Emit((byte)(0xB0 + rd.Code));
                     EmitI8(v);
                     return;
@@ -982,13 +982,13 @@ namespace AsmStudio.Engine
                 switch (rd.Size)
                 {
                     case 1:
-                        if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8 位立即数溢出");
+                        if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
                         EmitLegacyAndRex(false, 0, 0, rd.RexBit, SegKind.None, false, st.RepKind, false);
                         Emit((byte)(0xB0 + rd.Code));
                         EmitI8(v);
                         return;
                     case 2:
-                        if (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2)) Fail("16 位立即数溢出");
+                        if (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2)) Fail("16-bit immediate overflow");
                         EmitLegacyAndRex(false, 0, 0, rd.RexBit, SegKind.None, true, st.RepKind, false);
                         Emit((byte)(0xB8 + rd.Code));
                         EmitWord(v);
@@ -996,15 +996,15 @@ namespace AsmStudio.Engine
                     case 4:
                         if (!ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4))
                         {
-                            if (IsX64) Fail("32 位寄存器立即数溢出（请用 64 位寄存器）");
-                            Fail("32 位立即数溢出");
+                            if (IsX64) Fail("32-bit register immediate overflow (use a 64-bit register)");
+                            Fail("32-bit immediate overflow");
                         }
                         EmitLegacyAndRex(false, 0, 0, rd.RexBit, SegKind.None, false, st.RepKind, false);
                         Emit((byte)(0xB8 + rd.Code));
                         EmitDword(v);
                         return;
                     case 8:
-                        if (!IsX64) Fail("x86 下无效的 64 位寄存器");
+                        if (!IsX64) Fail("invalid 64-bit register on x86");
                         if (src.LabelName != null || !ImmFitsSigned(v, 4))
                         {
                             EmitLegacyAndRex(true, 0, 0, rd.RexBit, SegKind.None, false, st.RepKind, false);
@@ -1021,21 +1021,21 @@ namespace AsmStudio.Engine
                         }
                         return;
                     default:
-                        Fail("无效的寄存器尺寸");
+                        Fail("Invalid register size");
                         return;
                 }
             }
             if (IsMem(dst) && IsImm(src))
             {
                 int size = dst.Size;
-                if (size == 0) Fail("mov: 写内存立即数需要尺寸声明（byte/word/dword/qword ptr）");
+                if (size == 0) Fail("mov: writing an immediate to memory needs a size declaration (byte/word/dword/qword ptr)");
                 long v = ImmValue(src);
-                if (!IsX64 && size == 8) Fail("x86 下无效的 qword");
+                if (!IsX64 && size == 8) Fail("invalid qword on x86");
                 bool w = size == 8;
-                if (size == 8 && !ImmFitsSigned(v, 4)) Fail("qword 内存立即数必须能放入 32 位有符号数");
-                if (size == 4 && !ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("32 位立即数溢出");
-                if (size == 2 && !ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2)) Fail("16 位立即数溢出");
-                if (size == 1 && !ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8 位立即数溢出");
+                if (size == 8 && !ImmFitsSigned(v, 4)) Fail("qword memory immediate must fit in a signed 32-bit value");
+                if (size == 4 && !ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("32-bit immediate overflow");
+                if (size == 2 && !ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2)) Fail("16-bit immediate overflow");
+                if (size == 1 && !ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
                 EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0xC6 : (byte)0xC7);
@@ -1045,7 +1045,7 @@ namespace AsmStudio.Engine
                 else EmitDword(v);
                 return;
             }
-            Fail("mov: 不支持的操作数组合");
+            Fail("mov: unsupported operand combination");
         }
 
         /// <summary>
@@ -1076,8 +1076,8 @@ namespace AsmStudio.Engine
             }
             if (!needMoffs && !preferMoffs) return false;
 
-            // 内存侧尺寸检查（寄存器已给出操作尺寸，缺省声明是允许的）
-            if (memOp.Size != 0 && memOp.Size != size) Fail("mov: 操作数尺寸不匹配");
+            // memory侧尺寸检查（寄存器已给出操作尺寸，缺省声明是允许的）
+            if (memOp.Size != 0 && memOp.Size != size) Fail("mov: operand size mismatch");
 
             byte opcode;
             if (regIsDst)
@@ -1108,10 +1108,10 @@ namespace AsmStudio.Engine
         // ---- movabs ----
         private void EncodeMovAbs(Statement st, Operand dst, Operand src)
         {
-            if (!IsX64) Fail("movabs 仅存在于 x64");
+            if (!IsX64) Fail("movabs only exists on x64");
             Reg rd;
-            if (!IsReg(dst, out rd) || rd.Size != 8) Fail("movabs: 目标必须是 64 位寄存器");
-            if (!IsImm(src)) Fail("movabs: 源必须是立即数");
+            if (!IsReg(dst, out rd) || rd.Size != 8) Fail("movabs: destination must be a 64-bit register");
+            if (!IsImm(src)) Fail("movabs: source must be an immediate");
             long v = ImmValue(src);
             EmitLegacyAndRex(true, 0, 0, rd.RexBit, SegKind.None, false, st.RepKind, false);
             Emit((byte)(0xB8 + rd.Code));
@@ -1122,12 +1122,12 @@ namespace AsmStudio.Engine
         private void EncodeLea(Statement st, Operand dst, Operand src)
         {
             Reg rd;
-            if (!IsReg(dst, out rd)) Fail("lea: 第一操作数必须是寄存器");
-            if (!IsMem(src)) Fail("lea: 第二操作数必须是内存");
+            if (!IsReg(dst, out rd)) Fail("lea: first operand must be a register");
+            if (!IsMem(src)) Fail("lea: second operand must be memory");
             int size = rd.Size;
-            if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+            if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
             if (src.Size != 0 && src.Size != rd.Size && !(IsX64 && src.Size == 8 && rd.Size == 4))
-                Fail("lea: 操作数尺寸不匹配");
+                Fail("lea: operand size mismatch");
             EmitLegacyAndRex(size == 8, rd.RexBit, RexIndexOfMemIndex(src.Mem), RexIndexOfMemBase(src.Mem),
                 src.Mem.Segment, size == 2, st.RepKind, false);
             Emit(0x8D);
@@ -1138,33 +1138,33 @@ namespace AsmStudio.Engine
         private void EncodeMovx(Statement st, string m, Operand dst, Operand src, bool isSxd)
         {
             Reg rd, rs;
-            if (!IsReg(dst, out rd)) Fail(m + ": 目标必须是寄存器");
+            if (!IsReg(dst, out rd)) Fail(m + ": destination must be a register");
             int srcSize = 0;
             bool srcIsReg = IsReg(src, out rs);
             if (isSxd)
             {
-                if (!IsX64) Fail("movsxd 仅存在于 x64");
-                if (rd.Size != 8) Fail("movsxd: 目标必须是 64 位寄存器");
+                if (!IsX64) Fail("movsxd only exists on x64");
+                if (rd.Size != 8) Fail("movsxd: destination must be a 64-bit register");
                 srcSize = 4;
-                if (srcIsReg && rs.Size != 4) Fail("movsxd: 源必须是 32 位寄存器");
-                if (IsMem(src) && src.Size != 0 && src.Size != 4) Fail("movsxd: 源必须是 dword");
+                if (srcIsReg && rs.Size != 4) Fail("movsxd: source must be a 32-bit register");
+                if (IsMem(src) && src.Size != 0 && src.Size != 4) Fail("movsxd: source must be dword");
             }
             else if (st.SrcSizeHint != 0)
             {
                 srcSize = st.SrcSizeHint;
                 if (st.DstSizeHint != 0 && st.DstSizeHint != rd.Size)
-                    Fail(m + ": 目标尺寸与寄存器不匹配");
+                    Fail(m + ": destination size does not match register");
             }
             else
             {
                 if (srcIsReg) srcSize = rs.Size;
                 else if (IsMem(src) && src.Size != 0) srcSize = src.Size;
-                else Fail(m + ": 无法确定源操作数尺寸");
-                if (srcSize == rd.Size) Fail(m + ": 源与目标尺寸相同（不需要扩展）");
+                else Fail(m + ": cannot determine source operand size");
+                if (srcSize == rd.Size) Fail(m + ": source and destination sizes are the same (no extension needed)");
             }
-            if (!isSxd && srcSize != 1 && srcSize != 2) Fail(m + ": 源操作数必须是 8/16 位");
-            if (rd.Size != 2 && rd.Size != 4 && rd.Size != 8) Fail(m + ": 目标必须是 16/32/64 位寄存器");
-            if (!IsX64 && rd.Size == 8) Fail("x86 下无效的 64 位寄存器");
+            if (!isSxd && srcSize != 1 && srcSize != 2) Fail(m + ": source operand must be 8/16-bit");
+            if (rd.Size != 2 && rd.Size != 4 && rd.Size != 8) Fail(m + ": destination must be a 16/32/64-bit register");
+            if (!IsX64 && rd.Size == 8) Fail("invalid 64-bit register on x86");
 
             bool w = rd.Size == 8;
             bool need66 = rd.Size == 2;
@@ -1192,7 +1192,7 @@ namespace AsmStudio.Engine
 
             if (aReg && bReg)
             {
-                if (!IsX64 && (ra.Size == 8 || rb.Size == 8)) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && (ra.Size == 8 || rb.Size == 8)) Fail("invalid 64-bit register on x86");
                 // 短形式: 与 AX/EAX/RAX 交换
                 if ((ra.Index == 0 && !ra.High && rb.Index != 0 && !rb.High) ||
                     (rb.Index == 0 && !rb.High && ra.Index != 0 && !ra.High))
@@ -1226,12 +1226,12 @@ namespace AsmStudio.Engine
                 EmitXchgMem(st, rb, a, size);
                 return;
             }
-            Fail("xchg: 不支持的操作数组合");
+            Fail("xchg: unsupported operand combination");
         }
 
         private void EmitXchgMem(Statement st, Reg r, Operand memOp, int size)
         {
-            if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+            if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
             EmitLegacyAndRex(size == 8, r.RexBit,
                 RexIndexOfMemIndex(memOp.Mem), RexIndexOfMemBase(memOp.Mem),
                 FindMemSeg(memOp, null), size == 2, st.RepKind, CheckLock(st, memOp));
@@ -1251,7 +1251,7 @@ namespace AsmStudio.Engine
             if (dstReg && srcReg)
             {
                 int size = CheckSize2(dst, src, m);
-                if (!IsX64 && (rd.Size == 8 || rs.Size == 8)) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && (rd.Size == 8 || rs.Size == 8)) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rs.RexBit, 0, rd.RexBit, SegKind.None, size == 2, st.RepKind, false);
                 Emit(size == 1 ? op8 : op32);
@@ -1261,7 +1261,7 @@ namespace AsmStudio.Engine
             if (dstReg && IsMem(src))
             {
                 int size = CheckSize2(dst, src, m);
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rd.RexBit, RexIndexOfMemIndex(src.Mem), RexIndexOfMemBase(src.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -1272,7 +1272,7 @@ namespace AsmStudio.Engine
             if (IsMem(dst) && srcReg)
             {
                 int size = CheckSize2(dst, src, m);
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rs.RexBit, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, lockable);
@@ -1283,16 +1283,16 @@ namespace AsmStudio.Engine
             // AL/EAX/RAX 短形式: 仅在它更短时使用
             // - 8 位(AL): 04 ib 恒最短 → 直接用
             // - 16/32/64: imm 可放入 int8 时用 83 (r/m,imm8) 更短 → 落到下方通用路径;
-            //             否则 05 id 短形式 (比 81 少 1 字节)
+            //             否则 05 id 短形式 (比 81 少 1 bytes)
             if (dstReg && rd.Index == 0 && !rd.High && IsImm(src))
             {
                 int size = OperandSize(dst) != 0 ? OperandSize(dst) : OperandSize(src);
-                if (size == 0) Fail(m + ": 无法确定操作数尺寸");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
+                if (size == 0) Fail(m + ": cannot determine operand size");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
                 long v = ImmValue(src);
                 if (size == 1)
                 {
-                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8 位立即数溢出");
+                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
                     Emit((byte)(op8 + 4)); EmitI8(v);
                     return;
                 }
@@ -1301,12 +1301,12 @@ namespace AsmStudio.Engine
                     bool w = size == 8;
                     if (size == 2)
                     {
-                        if (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2)) Fail("16 位立即数溢出");
+                        if (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2)) Fail("16-bit immediate overflow");
                         Emit(0x66, (byte)(op32 + 4));
                         EmitWord(v);
                         return;
                     }
-                    if (!ImmFitsSigned(v, 4)) Fail(m + ": 立即数超出 32 位有符号范围");
+                    if (!ImmFitsSigned(v, 4)) Fail(m + ": immediate exceeds signed 32-bit range");
                     EmitLegacyAndRex(w, 0, 0, 0, SegKind.None, false, st.RepKind, false);
                     Emit((byte)(op32 + 4));
                     EmitDword(v);
@@ -1318,13 +1318,13 @@ namespace AsmStudio.Engine
             if ((dstReg || IsMem(dst)) && IsImm(src))
             {
                 int size = OperandSize(dst);
-                if (size == 0) Fail(m + ": 无法确定操作数尺寸（内存需要尺寸声明）");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
+                if (size == 0) Fail(m + ": cannot determine operand size (memory needs a size declaration)");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
                 long v = ImmValue(src);
                 bool w = size == 8;
                 if (size == 1)
                 {
-                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8 位立即数溢出");
+                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
                     EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                         FindMemSeg(dst, src), false, st.RepKind, lockable);
                     Emit(0x80);
@@ -1332,8 +1332,8 @@ namespace AsmStudio.Engine
                     EmitI8(v);
                     return;
                 }
-                if (size == 2 && (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2))) Fail("16 位立即数溢出");
-                if (size >= 4 && !ImmFitsSigned(v, 4)) Fail(m + ": 立即数超出 32 位有符号范围");
+                if (size == 2 && (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2))) Fail("16-bit immediate overflow");
+                if (size >= 4 && !ImmFitsSigned(v, 4)) Fail(m + ": immediate exceeds signed 32-bit range");
                 bool use83 = ImmFitsSigned(v, 1) && (size == 2 || size >= 4);
                 EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, lockable);
@@ -1344,7 +1344,7 @@ namespace AsmStudio.Engine
                 else EmitDword(v);
                 return;
             }
-            Fail(m + ": 不支持的操作数组合");
+            Fail(m + ": unsupported operand combination");
         }
 
         // ---- test ----
@@ -1357,7 +1357,7 @@ namespace AsmStudio.Engine
             if (dstReg && srcReg)
             {
                 int size = CheckSize2(dst, src, "test");
-                if (!IsX64 && (rd.Size == 8 || rs.Size == 8)) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && (rd.Size == 8 || rs.Size == 8)) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rs.RexBit, 0, rd.RexBit, SegKind.None, size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0x84 : (byte)0x85);
@@ -1370,12 +1370,12 @@ namespace AsmStudio.Engine
                 long v = ImmValue(src);
                 if (size == 1)
                 {
-                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8 位立即数溢出");
+                    if (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1)) Fail("8-bit immediate overflow");
                     Emit(0xA8); EmitI8(v);
                     return;
                 }
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
-                if (!ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("立即数溢出");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
+                if (!ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("Immediate overflow");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, 0, 0, 0, SegKind.None, size == 2, st.RepKind, false);
                 Emit(0xA9);
@@ -1386,13 +1386,13 @@ namespace AsmStudio.Engine
             if ((dstReg || IsMem(dst)) && IsImm(src))
             {
                 int size = OperandSize(dst);
-                if (size == 0) Fail("test: 无法确定操作数尺寸");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
+                if (size == 0) Fail("test: cannot determine operand size");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
                 long v = ImmValue(src);
                 bool w = size == 8;
-                if (size == 1 && (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1))) Fail("8 位立即数溢出");
-                if (size == 2 && (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2))) Fail("16 位立即数溢出");
-                if (size >= 4 && !ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("立即数溢出");
+                if (size == 1 && (!ImmFitsSigned(v, 1) && !ImmFitsUnsigned(v, 1))) Fail("8-bit immediate overflow");
+                if (size == 2 && (!ImmFitsSigned(v, 2) && !ImmFitsUnsigned(v, 2))) Fail("16-bit immediate overflow");
+                if (size >= 4 && !ImmFitsSigned(v, 4) && !ImmFitsUnsigned(v, 4)) Fail("Immediate overflow");
                 EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
                 Emit(size == 1 ? (byte)0xF6 : (byte)0xF7);
@@ -1405,7 +1405,7 @@ namespace AsmStudio.Engine
             if (IsMem(dst) && srcReg)
             {
                 int size = CheckSize2(dst, src, "test");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rs.RexBit, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -1416,7 +1416,7 @@ namespace AsmStudio.Engine
             if (dstReg && IsMem(src))
             {
                 int size = CheckSize2(dst, src, "test");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, rd.RexBit, RexIndexOfMemIndex(src.Mem), RexIndexOfMemBase(src.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -1424,7 +1424,7 @@ namespace AsmStudio.Engine
                 EmitMemModRm(src.Mem, rd.Code, rd.RexBit);
                 return;
             }
-            Fail("test: 不支持的操作数组合");
+            Fail("test: unsupported operand combination");
         }
 
         // ---- 移位 ----
@@ -1434,16 +1434,16 @@ namespace AsmStudio.Engine
             InstructionTables.TryGetShift(m, out digit);
             Reg rd;
             bool dstReg = IsReg(dst, out rd);
-            if (!dstReg && !IsMem(dst)) Fail(m + ": 目标必须是寄存器或内存");
+            if (!dstReg && !IsMem(dst)) Fail(m + ": destination must be a register or memory");
             int size = OperandSize(dst);
-            if (size == 0) Fail(m + ": 无法确定操作数尺寸（内存需要尺寸声明）");
-            if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
+            if (size == 0) Fail(m + ": cannot determine operand size (memory needs a size declaration)");
+            if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
 
             Reg rs;
             if (IsReg(src, out rs))
             {
                 if (rs.Size != 1 || rs.Index != 1 || rs.High)
-                    Fail(m + ": 计数操作数只能是 cl");
+                    Fail(m + ": count operand can only be cl");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -1454,7 +1454,7 @@ namespace AsmStudio.Engine
             if (IsImm(src))
             {
                 long v = ImmValue(src);
-                if (v < 0 || v > 255) Fail(m + ": 移位计数超出 0-255");
+                if (v < 0 || v > 255) Fail(m + ": shift count exceeds 0-255");
                 bool w = size == 8;
                 if (v == 1)
                 {
@@ -1471,19 +1471,19 @@ namespace AsmStudio.Engine
                 EmitI8(v);
                 return;
             }
-            Fail(m + ": 计数操作数必须是立即数或 cl");
+            Fail(m + ": count operand must be an immediate or cl");
         }
 
         // ---- imul r, r/m ----
         private void EncodeImul2(Statement st, Operand dst, Operand src)
         {
             Reg rd, rs;
-            if (!IsReg(dst, out rd)) Fail("imul: 第一操作数必须是寄存器");
+            if (!IsReg(dst, out rd)) Fail("imul: first operand must be a register");
             int size = rd.Size;
-            if (IsReg(src, out rs)) { if (rs.Size != size) Fail("imul: 操作数尺寸不匹配"); }
-            else if (IsMem(src)) { if (src.Size != 0 && src.Size != size) Fail("imul: 操作数尺寸不匹配"); }
-            else Fail("imul: 第二操作数必须是寄存器或内存");
-            if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+            if (IsReg(src, out rs)) { if (rs.Size != size) Fail("imul: operand size mismatch"); }
+            else if (IsMem(src)) { if (src.Size != 0 && src.Size != size) Fail("imul: operand size mismatch"); }
+            else Fail("imul: second operand must be a register or memory");
+            if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
             EmitLegacyAndRex(size == 8, rd.RexBit,
                 IsReg(src, out rs) ? 0 : RexIndexOfMemIndex(src.Mem),
                 IsReg(src, out rs) ? RegLowBit(src) : RexIndexOfMemBase(src.Mem),
@@ -1501,7 +1501,7 @@ namespace AsmStudio.Engine
             if (IsReg(src, out rs))
             {
                 size = CheckSize2(dst, src, m);
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
                 bool dstIsReg = IsReg(dst, out rd);
                 EmitLegacyAndRex(size == 8, rs.RexBit,
                     dstIsReg ? 0 : RexIndexOfMemIndex(dst.Mem),
@@ -1516,10 +1516,10 @@ namespace AsmStudio.Engine
             if (IsImm(src))
             {
                 size = OperandSize(dst);
-                if (size == 0) Fail(m + ": 无法确定操作数尺寸");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位操作");
+                if (size == 0) Fail(m + ": cannot determine operand size");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit operation on x86");
                 long v = ImmValue(src);
-                if (v < 0 || v > 255) Fail(m + ": 位号超出 0-255");
+                if (v < 0 || v > 255) Fail(m + ": bit index exceeds 0-255");
                 bool w = size == 8;
                 EmitLegacyAndRex(w, 0, RexIndexOfMemIndex(dst.Mem), RexIndexOfMemBase(dst.Mem),
                     FindMemSeg(dst, src), size == 2, st.RepKind, false);
@@ -1528,7 +1528,7 @@ namespace AsmStudio.Engine
                 EmitI8(v);
                 return;
             }
-            Fail(m + ": 第二操作数必须是寄存器或立即数");
+            Fail(m + ": second operand must be a register or immediate");
         }
 
         // ==================== 三操作数 ====================
@@ -1538,11 +1538,11 @@ namespace AsmStudio.Engine
             if (m == "imul")
             {
                 Reg rd, rs;
-                if (!IsReg(o1, out rd)) Fail("imul: 第一操作数必须是寄存器");
+                if (!IsReg(o1, out rd)) Fail("imul: first operand must be a register");
                 int size = rd.Size;
-                if (!IsReg(o2, out rs) && !IsMem(o2)) Fail("imul: 第二操作数必须是寄存器或内存");
-                if (!IsImm(o3)) Fail("imul: 第三操作数必须是立即数");
-                if (!IsX64 && size == 8) Fail("x86 下无效的 64 位寄存器");
+                if (!IsReg(o2, out rs) && !IsMem(o2)) Fail("imul: second operand must be a register or memory");
+                if (!IsImm(o3)) Fail("imul: third operand must be an immediate");
+                if (!IsX64 && size == 8) Fail("invalid 64-bit register on x86");
                 long v = ImmValue(o3);
                 bool shortForm = ImmFitsSigned(v, 1);
                 EmitLegacyAndRex(size == 8, rd.RexBit,
@@ -1556,7 +1556,7 @@ namespace AsmStudio.Engine
                 else EmitDword(v);
                 return;
             }
-            Fail("无法编码三操作数指令 '" + m + "'");
+            Fail("Cannot encode three-operand instruction '" + m + "'");
         }
 
         // ==================== 分支 ====================
@@ -1611,7 +1611,7 @@ namespace AsmStudio.Engine
         {
             long rel = ComputeBranchRel(target, 2);
             if (rel < -128 || rel > 127)
-                Fail(what + ": 短跳转超出 ±128 字节范围");
+                Fail(what + ": short jump exceeds ±128 bytes");
             Emit(opcode);
             EmitI8(rel);
         }
@@ -1632,7 +1632,7 @@ namespace AsmStudio.Engine
                 ulong v;
                 if (_labels != null && _labels.TryGetValue(target.LabelName, out v))
                 {
-                    // 已定义 → 后向
+                    // already defined → 后向
                     return 1;
                 }
                 if (_allLabelNames != null && _allLabelNames.Contains(target.LabelName))
@@ -1648,7 +1648,7 @@ namespace AsmStudio.Engine
         }
 
         /// <summary>计算相对位移。instrSize 为完整指令长度（含位移字段）。
-        /// 注意：解析器把裸符号产出为"符号立即数"（Kind=Immediate + LabelName），
+        /// 注意：解析器把裸符号产出为"symbol immediate"（Kind=Immediate + LabelName），
         /// 分支语境下一律视为标签/符号目标。</summary>
         private long ComputeBranchRel(Operand target, int instrSize)
         {
@@ -1673,13 +1673,13 @@ namespace AsmStudio.Engine
                 {
                     // 外部符号作为直接分支目标：需要已知 BaseAddress 才能算 rel32
                     if (_base == 0)
-                        Fail("对外部符号 '" + target.LabelName + "' 的直接跳转需要已知 BaseAddress；"
-                            + "跨进程调用请使用间接形式：mov rax, 符号 + call rax");
+                        Fail("for external symbol '" + target.LabelName + "' requires a known BaseAddress for a direct jump; "
+                            + "for cross-process calls use the indirect form: mov rax, symbol + call rax");
                     targetAddr = (long)symAddr;
                 }
                 else
                 {
-                    Fail("未定义的标签或符号: '" + target.LabelName + "'");
+                    Fail("Undefined label or symbol: '" + target.LabelName + "'");
                     return 0;
                 }
             }
@@ -1689,7 +1689,7 @@ namespace AsmStudio.Engine
             }
             else
             {
-                Fail("分支目标必须是标签或立即数");
+                Fail("Branch target must be a label or immediate");
                 return 0;
             }
             long nextIp = (long)_base + _startOffset + instrSize;
@@ -1702,11 +1702,11 @@ namespace AsmStudio.Engine
                 Fail("__FORCE32__");
             }
             if ((instrSize == 5 || instrSize == 6) && (rel < int.MinValue || rel > int.MaxValue))
-                Fail("分支距离超出 ±2GB");
+                Fail("Branch distance exceeds ±2GB");
             return rel;
         }
 
-        // ==================== 数据定义 ====================
+        // ==================== data定义 ====================
 
         private void EncodeData(Statement st)
         {
@@ -1719,12 +1719,12 @@ namespace AsmStudio.Engine
                 case "dq": size = 8; break;
                 default: size = 1; break;
             }
-            if (st.Operands.Count == 0) Fail("数据定义至少需要一个值");
+            if (st.Operands.Count == 0) Fail("Data definition needs at least one value");
             foreach (Operand o in st.Operands)
             {
                 if (o.IsString)
                 {
-                    if (size != 1) Fail("字符串只能用于 db");
+                    if (size != 1) Fail("Strings are only valid with db");
                     for (int i = 0; i < o.StrData.Length; i++) Emit((byte)o.StrData[i]);
                     continue;
                 }
@@ -1761,7 +1761,7 @@ namespace AsmStudio.Engine
             return (m.IndexReg >> 3) & 1;
         }
 
-        /// <summary>发射 rm 字段（寄存器或内存），reg 字段为 /digit</summary>
+        /// <summary>发射 rm 字段（寄存器或memory），reg 字段为 /digit</summary>
         private void EmitRm(Operand o, int digit)
         {
             Reg r;
@@ -1775,9 +1775,9 @@ namespace AsmStudio.Engine
             if (!st.Lock) return false;
             string m = st.Mnemonic;
             if (!InstructionLexicon.IsLockAllowed(m))
-                Fail("lock 前缀不能用于 '" + m + "'");
+                Fail("lock prefix is not valid for '" + m + "'");
             if (rmOp == null || rmOp.Kind != OperandKind.Memory)
-                Fail("lock 要求目标为内存操作数");
+                Fail("lock requires a memory destination");
             return true;
         }
     }

@@ -1,0 +1,14 @@
+{
+  "name": "冒烟-AV崩溃拦截 x64+VEH",
+  "description": "故意空指针写触发 AV。日志出现 [VEH recovered] 且目标进程存活即通过——本方案的 FAILED 字样是预期结果（拦截成功）。",
+  "syntax": "intel",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "空指针写 → 应被 VEH 拦截、目标存活",
+      "mode": "code",
+      "code": "xor ecx, ecx\nmov qword ptr [rcx], 0x1234\nret",
+      "timeout_ms": 3000
+    }
+  ]
+}

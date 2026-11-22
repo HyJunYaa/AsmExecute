@@ -16,7 +16,7 @@ namespace AsmStudio.Remote
         NoConnection // 未连接
     }
 
-    /// <summary>寄存器槽索引（与 AsmLibrary ASMR_* 一致）</summary>
+    /// <summary>寄存器槽索引</summary>
     public static class RegIdx
     {
         public const int Rax = 0, Rcx = 1, Rdx = 2, Rbx = 3;
@@ -119,9 +119,7 @@ namespace AsmStudio.Remote
     /// <summary>执行通道</summary>
     public enum ExecChannel
     {
-        PipeDll,        // 目标内 AsmLibrary.dll + 命名管道（VEH 全保护）
-        RemoteThreadVeh,// 远程线程 + 汇编 VEH（无 DLL 注入，崩溃由 handler 重置上下文）
-        RemoteThread,   // 远程线程直调（无 VEH 保护）
-        InProcess       // 主程序本进程（直接 P/Invoke 自身架构的 AsmLibrary）
+        RemoteThreadVeh,// 远程线程 + 汇编 VEH（无 DLL 注入，崩溃由 handler 重置上下文，主模式）
+        RemoteThread    // 远程线程直调（无 VEH 保护，兜底）
     }
 }

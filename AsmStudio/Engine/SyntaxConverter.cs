@@ -3,7 +3,7 @@
 // 转换范围（尽力而为，无法识别的行原样保留）：
 //   - 两/三操作数指令的操作数反序（AT&T 源在前）
 //   - 寄存器 % 前缀、立即数 $ 前缀、间接 call/jmp 的 *
-//   - 内存 [base+index*scale+disp] ↔ disp(base,index,scale)；[rip+X] ↔ X(%rip)
+//   - memory [base+index*scale+disp] ↔ disp(base,index,scale)；[rip+X] ↔ X(%rip)
 //   - 尺寸后缀 b/w/l/q（由寄存器或 byte/word/dword/qword ptr 推断）
 //   - movzx/movsx → movz??/movs??（movzbl/movslq/...）
 //   - 段前缀 fs:[x] ↔ %fs:x；Intel ';' 注释 ↔ AT&T '#' 注释
@@ -56,7 +56,7 @@ namespace AsmStudio.Engine
                 body = body.Substring(0, cPos).Trim();
             }
 
-            // 标签行 / 伪指令行 / 纯注释：原样保留
+            // 标签Row / 伪指令Row / 纯注释：原样保留
             if (body.Length == 0 || body.EndsWith(":") ||
                 body.StartsWith(".") || body.StartsWith("#"))
                 return line;
@@ -178,10 +178,10 @@ namespace AsmStudio.Engine
                 // Intel 助记符 → AT&T：补尺寸后缀
                 if (mnem == "movzx" || mnem == "movsx")
                 {
-                    if (ops.Count != 2) { err = "movzx/movsx 需要 2 操作数"; return false; }
+                    if (ops.Count != 2) { err = "movzx/movsx needs 2 operands"; return false; }
                     int dstW = OperandRegWidth(ops[0]);
                     int srcW = OperandSrcSize(ops[1]);
-                    if (dstW <= 0 || srcW <= 0) { err = "无法推断 movzx/movsx 宽度"; return false; }
+                    if (dstW <= 0 || srcW <= 0) { err = "Cannot infer movzx/movsx width"; return false; }
                     char sl = SizeLetter(srcW);
                     char dl = SizeLetter(dstW);
                     newMnem = (mnem == "movzx" ? "movz" : "movs") + sl.ToString() + dl.ToString();
@@ -237,7 +237,7 @@ namespace AsmStudio.Engine
                 // AT&T → Intel
                 if (mnem.StartsWith("movz") && mnem.Length >= 5)
                 {
-                    if (ops.Count != 2) { err = "movz?? 需要 2 操作数"; return false; }
+                    if (ops.Count != 2) { err = "movz?? needs 2 operands"; return false; }
                     char srcL = mnem[4];
                     string ptr = LetterToPtr(srcL);
                     newMnem = "movzx";
@@ -250,7 +250,7 @@ namespace AsmStudio.Engine
                 }
                 if (mnem.StartsWith("movs") && mnem.Length >= 5 && mnem != "movsb" && mnem != "movsw" && mnem != "movsd")
                 {
-                    if (ops.Count != 2) { err = "movs?? 需要 2 操作数"; return false; }
+                    if (ops.Count != 2) { err = "movs?? needs 2 operands"; return false; }
                     char srcL = mnem[4];
                     string ptr = LetterToPtr(srcL);
                     newMnem = (srcL == 'l' && ops[1].Contains("%r")) ? "movsxd" : "movsx";
@@ -284,7 +284,7 @@ namespace AsmStudio.Engine
                     newOps.RemoveAt(newOps.Count - 1);
                     newOps.Insert(0, dst);
                 }
-                // 有后缀信息 → 当其它操作数均无数据寄存器（尺寸不可推断）时给内存操作数补 ptr
+                // 有后缀信息 → 当其它操作数均无data寄存器（尺寸不可推断）时给memory操作数补 ptr
                 if (srcL2.Length > 0)
                 {
                     for (int i = 0; i < newOps.Count; i++)
@@ -386,7 +386,7 @@ namespace AsmStudio.Engine
             return s;
         }
 
-        /// <summary>Intel 内存表达式（不含方括号）→ AT&T disp(base,index,scale)</summary>
+        /// <summary>Intel memory表达式（不含方括号）→ AT&T disp(base,index,scale)</summary>
         private static string ConvertMemIntelToAtt(string expr)
         {
             // 拆 +/-
@@ -474,7 +474,7 @@ namespace AsmStudio.Engine
 
             if (breg.Length == 0 && ireg.Length == 0)
             {
-                // 纯符号/绝对位移内存：AT&T 需括号形式明确"内存"语义（g_score(,1)）
+                // 纯符号/绝对位移memory：AT&T 需括号形式明确"memory"语义（g_score(,1)）
                 sb.Append("(,1)");
                 return sb.ToString();
             }
@@ -530,7 +530,7 @@ namespace AsmStudio.Engine
                 }
             }
 
-            // 内存 d(b,i,s) / X(%rip)
+            // memory d(b,i,s) / X(%rip)
             int lp = op.LastIndexOf('(');
             if (lp >= 0 && op.EndsWith(")"))
             {
@@ -545,7 +545,7 @@ namespace AsmStudio.Engine
             return op;
         }
 
-        /// <summary>AT&T 内存: outer=位移/符号, inner=base,index,scale → Intel [expr]</summary>
+        /// <summary>AT&T memory: outer=位移/符号, inner=base,index,scale → Intel [expr]</summary>
         private static string ConvertMemAttToIntel2(string outer, string inner, bool indirectBranch)
         {
             List<string> parts = new List<string>();
@@ -606,7 +606,7 @@ namespace AsmStudio.Engine
             return "[" + body + "]";
         }
 
-        /// <summary>是否为"数据"寄存器（排除典型地址用寄存器 rsp/rbp）</summary>
+        /// <summary>是否为"data"寄存器（排除典型地址用寄存器 rsp/rbp）</summary>
         private static bool IsDataRegister(string op)
         {
             string t = op.Trim();

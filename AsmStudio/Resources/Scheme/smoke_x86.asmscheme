@@ -1,0 +1,32 @@
+{
+  "name": "冒烟-x86 基础",
+  "description": "32 位目标冒烟：算术/栈/内部 call+ret 栈平衡，纯代码，不依赖目标符号",
+  "syntax": "intel",
+  "arch": "x86",
+  "steps": [
+    {
+      "title": "算术与返回值（ret=0x68AC）",
+      "mode": "code",
+      "code": "mov eax, 0x1234\nadd eax, 0x5678\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "栈读写（ret=0x55）",
+      "mode": "code",
+      "code": "push 0x55\npop eax\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "内部 call+ret 栈平衡（ret=0x99）",
+      "mode": "code",
+      "code": "call sub1\njmp done\nsub1:\nmov eax, 0x99\nret\ndone:\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "条件跳转+循环（ret=15）",
+      "mode": "code",
+      "code": "mov ecx, 5\nxor eax, eax\nsum:\nadd eax, ecx\nloop sum\nret",
+      "timeout_ms": 3000
+    }
+  ]
+}

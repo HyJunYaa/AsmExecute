@@ -1,4 +1,4 @@
-// MainForm.cs - 主窗口逻辑：多文档汇编编辑 / 逐行校验 / 汇编 / 远程执行 / 方案运行
+// MainForm.cs - 主窗口逻辑：多文档汇编编辑 / 逐行校验 / 汇编 / 远程执Row / 方案运行
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -7,6 +7,7 @@ using System.Text;
 using System.Windows.Forms;
 using AsmStudio.Controls;
 using AsmStudio.Engine;
+using AsmStudio.Localization;
 using AsmStudio.Remote;
 using AsmStudio.Schemes;
 
@@ -18,8 +19,9 @@ namespace AsmStudio
         {
             public TabPage Page;
             public AsmEditor Editor;
-            public string FilePath;   // null = 未保存
-            public SyntaxKind DocSyntax = SyntaxKind.Intel;   // 当前内容所属语法（切换时据此转换）
+        public string FilePath;   // null = unsaved
+        public SyntaxKind DocSyntax = SyntaxKind.Intel;   // 当前内容所属语法（切换时据此转换）
+        public bool UntouchedDefault;      // 仍是默认模板（未被编辑），语言切换后可重翻
         }
 
         private readonly List<DocInfo> _docs = new List<DocInfo>();
@@ -27,25 +29,216 @@ namespace AsmStudio
         private TargetSession _session;
         private SymbolTable _symbolTable = new SymbolTable();
         private int _newDocCounter = 1;
+        private string _initialTemplate;   // 构造时（语言加载前）的默认模板，用于启动后重翻
 
         public MainForm()
         {
             InitializeComponent();
             cboChannel.SelectedIndex = 0;
             cboChannel.SelectedIndexChanged += ChannelChanged;
+            _initialTemplate = GetDefaultTemplate();
             CreateDocument(null, null);
         }
 
         protected override void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            Log("AsmStudio 就绪。使用步骤:");
-            Log("  1. 启动目标程序（bin\\Debug\\x64\\TargetCpp.exe 或 TargetSharp.exe）");
-            Log("  2. 点击【扫描进程】并选择目标 → 连接");
-            Log("  3. 编辑汇编 → 验证 → 执行 / 调用目标函数");
-            Log("  4. 【方案】菜单可加载 Schemes\\*.asmscheme 顺序执行");
+            LoadAppIcons();
+            SnapshotOriginalTexts();   // 语言键快照必须在首次翻译前建立
+            LanguageService.SetCulture(LanguageService.LoadChoice());
+            ApplyLanguage();
+            BuildLanguageMenu();
+            // 默认文档若未被编辑过，按当前所选语言重翻模板
+            foreach (DocInfo d in _docs)
+                if (d.UntouchedDefault)
+                {
+                    d.Editor.Text = GetDefaultTemplate();
+                    d.UntouchedDefault = true;
+                }
+            Log(T("AsmStudio ready. Usage:"));
+            Log(T("  1. Start a target (bin\\Debug\\x64\\GameSharp.exe, or your own process)"));
+            Log(T("  2. Click [Scan Processes], pick a target, then Connect"));
+            Log(T("  3. Edit assembly → Validate → Execute / call target function"));
+            Log(T("  4. [Schemes] menu loads Resources\\Scheme\\*.asmscheme and runs them"));
             Log("");
-            Log("提示: 本进程模式需要把 AsmLibrary.dll 放到主程序目录。");
+        }
+
+        // ================= 多区域语言 =================
+
+        private readonly Dictionary<object, string> _origTexts =
+            new Dictionary<object, string>();   // 控件/菜单项 → 英文原始键
+        private string[] _origChannelItems;     // 通道下拉的英文原始项
+
+        /// <summary>语言键快照：首次翻译前记录每个控件/菜单项的英文原文。
+        /// 切换语言时始终从快照重翻 —— 否则 T(当前文本) 在第二次切换后 miss（键已不是英文）。</summary>
+        private void SnapshotOriginalTexts()
+        {
+            _origTexts.Clear();
+            _origTexts[this] = Text;
+            SnapshotMenu(menuStrip);
+            SnapshotMenu(tabCloseMenu);     // 标签右键菜单（ContextMenuStrip 不在 Controls 树里，须显式覆盖）
+            SnapshotMenu(logClearMenu);     // 执行日志右键菜单
+            foreach (ToolStripItem it in statusStrip.Items)
+                _origTexts[it] = it.Text;
+            foreach (ToolStripItem it in toolbar.Items)
+                _origTexts[it] = it.Text;
+            var cbo = cboChannel.ComboBox;
+            if (cbo != null)
+            {
+                _origChannelItems = new string[cbo.Items.Count];
+                for (int i = 0; i < cbo.Items.Count; i++)
+                    _origChannelItems[i] = cbo.Items[i] as string;
+            }
+            SnapshotControls(this);
+        }
+
+        private void SnapshotMenu(ToolStrip strip)
+        {
+            foreach (ToolStripItem it in strip.Items)
+                SnapshotMenuItem(it as ToolStripMenuItem);
+        }
+
+        private void SnapshotMenuItem(ToolStripMenuItem mi)
+        {
+            if (mi == null) return;
+            _origTexts[mi] = mi.Text;
+            foreach (ToolStripItem child in mi.DropDownItems)
+                SnapshotMenuItem(child as ToolStripMenuItem);
+        }
+
+        private void SnapshotControls(Control root)
+        {
+            foreach (Control c in root.Controls)
+            {
+                if (c is GroupBox || c is Button || c is Label ||
+                    c is CheckBox || c is RadioButton || c is TabPage)
+                    _origTexts[c] = c.Text;
+                SnapshotControls(c);
+            }
+        }
+
+        private string OrigText(object key, string current)
+        {
+            string v;
+            return _origTexts.TryGetValue(key, out v) ? v : current;
+        }
+
+        /// <summary>从英文键快照重刷全部菜单/控件文本</summary>
+        private void ApplyLanguage()
+        {
+            Text = T(OrigText(this, Text));
+            ApplyMenuItems(menuStrip);
+            ApplyMenuItems(tabCloseMenu);   // 标签右键菜单
+            ApplyMenuItems(logClearMenu);   // 执行日志右键菜单
+            foreach (ToolStripItem it in statusStrip.Items)
+                it.Text = T(OrigText(it, it.Text));
+            foreach (ToolStripItem it in toolbar.Items)
+                if (it is ToolStripButton || it is ToolStripLabel)
+                    it.Text = T(OrigText(it, it.Text));
+            // 通道下拉项（保留选中索引，从快照重翻）
+            var cbo = cboChannel.ComboBox;
+            if (cbo != null && _origChannelItems != null &&
+                cbo.Items.Count == _origChannelItems.Length)
+            {
+                int sel = cbo.SelectedIndex;
+                for (int i = 0; i < cbo.Items.Count; i++)
+                    cbo.Items[i] = T(_origChannelItems[i]);
+                cbo.SelectedIndex = sel;
+            }
+            ApplyControls(this);
+            // 未编辑过的默认文档按当前语言重翻模板
+            foreach (DocInfo d in _docs)
+                if (d.UntouchedDefault)
+                    d.Editor.Text = GetDefaultTemplate();
+        }
+
+        private void ApplyMenuItems(ToolStrip strip)
+        {
+            foreach (ToolStripItem it in strip.Items)
+                ApplyMenuItem(it as ToolStripMenuItem);
+        }
+
+        private void ApplyMenuItem(ToolStripMenuItem mi)
+        {
+            if (mi == null) return;
+            mi.Text = T(OrigText(mi, mi.Text));
+            if (mi == menuLanguage) return;   // 下拉项是语言名，不翻译
+            foreach (ToolStripItem child in mi.DropDownItems)
+                ApplyMenuItem(child as ToolStripMenuItem);
+        }
+
+        private void ApplyControls(Control root)
+        {
+            foreach (Control c in root.Controls)
+            {
+                if (c is GroupBox || c is Button || c is Label ||
+                    c is CheckBox || c is RadioButton || c is TabPage)
+                    c.Text = T(OrigText(c, c.Text));
+                ApplyControls(c);
+            }
+        }
+
+        /// <summary>按 LanguageService.Languages 重建 语言 菜单下拉项</summary>
+        private void BuildLanguageMenu()
+        {
+            menuLanguage.DropDownItems.Clear();
+            foreach (Localization.LanguageService.LanguageDef lang in LanguageService.Languages)
+            {
+                string culture = lang.Culture;
+                ToolStripMenuItem item = new ToolStripMenuItem(lang.DisplayName);
+                item.Tag = culture;
+                item.Click += delegate
+                {
+                    LanguageService.SaveChoice(culture);
+                    LanguageService.SetCulture(culture);
+                    ApplyLanguage();
+                    UpdateLanguageChecks(culture);
+                    Log(T("UI language switched: ") + lang.DisplayName);
+                };
+                menuLanguage.DropDownItems.Add(item);
+            }
+        }
+
+        /// <summary>切换后同步语言菜单的勾选状态</summary>
+        private void UpdateLanguageChecks(string culture)
+        {
+            foreach (ToolStripItem it in menuLanguage.DropDownItems)
+            {
+                ToolStripMenuItem mi = it as ToolStripMenuItem;
+                if (mi != null) mi.Checked = (string)mi.Tag == culture;
+            }
+        }
+
+        // ================= 应用图标 =================
+
+        private static readonly System.Resources.ResourceManager _appRes =
+            new System.Resources.ResourceManager("AsmStudio.AppResources", typeof(MainForm).Assembly);
+
+        /// <summary>从 AppResources 资源取图标位图并挂到工具栏/按钮/窗口</summary>
+        private void LoadAppIcons()
+        {
+            try
+            {
+                using (Stream s = typeof(MainForm).Assembly.GetManifestResourceStream(
+                    "AsmStudio.Icons.app.ico"))
+                {
+                    if (s != null) this.Icon = new Icon(s);
+                }
+                btnScan.Image = (Image)_appRes.GetObject("Scan");
+                btnConnect.Image = (Image)_appRes.GetObject("Connect");
+                btnDisconnect.Image = (Image)_appRes.GetObject("Disconnect");
+                btnAssemble.Image = (Image)_appRes.GetObject("Validate");
+                btnAssemble.TextImageRelation = TextImageRelation.ImageBeforeText;
+                btnExecute.Image = (Image)_appRes.GetObject("Run");
+                btnExecute.TextImageRelation = TextImageRelation.ImageBeforeText;
+                foreach (ToolStripItem it in toolbar.Items)
+                    if (it.Image != null)
+                        it.DisplayStyle = ToolStripItemDisplayStyle.ImageAndText;
+            }
+            catch (Exception ex)
+            {
+                Log("[!] icon load failed: " + ex.Message);
+            }
         }
 
         // ================= 文档管理 =================
@@ -71,8 +264,8 @@ namespace AsmStudio
                 DocInfo cur = CurrentDoc;
                 if (cur != null && ReferenceEquals(doc, cur))
                 {
-                    lblStatus.Text = "行 " + doc.Editor.CaretLine + ", 列 " +
-                        doc.Editor.CaretColumn + "  |  就绪";
+                    lblStatus.Text = T("Row ") + doc.Editor.CaretLine + T(", Col ") +
+                        doc.Editor.CaretColumn + "  |  " + T("Ready");
                 }
             };
             doc.FilePath = filePath;
@@ -81,7 +274,7 @@ namespace AsmStudio
             TabPage page = new TabPage();
             page.Controls.Add(doc.Editor);
             page.Text = filePath != null ? Path.GetFileName(filePath)
-                : ("汇编" + _newDocCounter + ".asm");
+                : ("Assembly" + _newDocCounter + ".asm");
             if (filePath == null) _newDocCounter++;
 
             doc.Page = page;
@@ -92,17 +285,20 @@ namespace AsmStudio
             if (content != null)
                 doc.Editor.Text = content;
             else
+            {
                 doc.Editor.Text = GetDefaultTemplate();
+                doc.UntouchedDefault = true;   // 启动后按所选语言重翻
+            }
             return doc;
         }
 
         private static string GetDefaultTemplate()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("; Intel 语法示例: 调用目标的 GameAddScore(5)");
-            sb.AppendLine("; 远程执行时请用 mov+call 间接模板（跨进程安全）:");
-            sb.AppendLine("mov rax, GameAddScore   ; 符号由主程序注入");
-            sb.AppendLine("mov rcx, 5              ; x64 第一参数 → rcx");
+            sb.AppendLine(T("; Intel syntax example: call target GameAddScore(5)"));
+            sb.AppendLine(T("; For remote execution use the mov+call indirection template (cross-process safe):"));
+            sb.AppendLine(T("mov rax, GameAddScore   ; symbol injected by the main app"));
+            sb.AppendLine(T("mov rcx, 5              ; x64 first argument -> rcx"));
             sb.AppendLine("call rax");
             sb.AppendLine("ret");
             return sb.ToString();
@@ -118,7 +314,7 @@ namespace AsmStudio
         private void CloseDoc(int index)
         {
             if (_docs.Count <= 1) return;
-            if (MessageBox.Show("关闭文档 " + _docs[index].Page.Text + "？", "确认",
+            if (MessageBox.Show(T("Close document ") + _docs[index].Page.Text + "？", T("Confirm"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
             TabPage page = _docs[index].Page;
@@ -130,6 +326,7 @@ namespace AsmStudio
 
         private void MenuFileNewClick(object sender, EventArgs e)
         {
+            _initialTemplate = GetDefaultTemplate();
             CreateDocument(null, null);
         }
 
@@ -137,8 +334,8 @@ namespace AsmStudio
         {
             using (OpenFileDialog dlg = new OpenFileDialog())
             {
-                dlg.Filter = "汇编文件 (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|全部文件 (*.*)|*.*";
-                dlg.Title = "打开汇编文件";
+                dlg.Filter = T("Assembly files (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|All files (*.*)|*.*");
+                dlg.Title = T("Open Assembly File");
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
                     try
@@ -151,7 +348,7 @@ namespace AsmStudio
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show(this, "读取失败: " + ex.Message, "错误",
+                        MessageBox.Show(this, T("Failed to read: ") + ex.Message, T("Error"),
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
@@ -168,14 +365,14 @@ namespace AsmStudio
             Close();
         }
 
-        // ---- 标签右键菜单：单独保存 / 关闭其他 / 全部关闭 ----
+        // ---- 标签右键菜单：单独保存 / Close other / 全部关闭 ----
 
         private void MenuTabSaveClick(object sender, EventArgs e)
         {
             SaveDocument(CurrentDoc);
         }
 
-        /// <summary>强制关闭文档（不弹确认；用于关闭其他/全部关闭的批量操作）</summary>
+        /// <summary>强制关闭文档（不弹Confirm；用于关闭其他/全部关闭的批量操作）</summary>
         private void ForceCloseDoc(DocInfo doc)
         {
             if (doc == null) return;
@@ -189,7 +386,7 @@ namespace AsmStudio
             if (cur == null) return;
             int count = _docs.Count - 1;
             if (count <= 0) return;
-            if (MessageBox.Show("关闭其他 " + count + " 个文档？", "确认",
+            if (MessageBox.Show(T("Close other ") + count + " document(s)?", T("Confirm"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
             List<DocInfo> doomed = new List<DocInfo>();
@@ -202,7 +399,7 @@ namespace AsmStudio
         private void MenuTabCloseAllClick(object sender, EventArgs e)
         {
             if (_docs.Count == 0) return;
-            if (MessageBox.Show("关闭全部 " + _docs.Count + " 个文档？", "确认",
+            if (MessageBox.Show(T("Close all ") + _docs.Count + " document(s)?", T("Confirm"),
                 MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
             foreach (DocInfo d in _docs) tabControlDocs.TabPages.Remove(d.Page);
@@ -217,7 +414,7 @@ namespace AsmStudio
             {
                 using (SaveFileDialog dlg = new SaveFileDialog())
                 {
-                    dlg.Filter = "汇编文件 (*.asm)|*.asm|全部文件 (*.*)|*.*";
+                    dlg.Filter = T("Assembly files (*.asm)|*.asm|All files (*.*)|*.*");
                     dlg.FileName = doc.Page.Text;
                     if (dlg.ShowDialog(this) != DialogResult.OK) return;
                     path = dlg.FileName;
@@ -228,11 +425,11 @@ namespace AsmStudio
                 File.WriteAllText(path, doc.Editor.Text, new UTF8Encoding(false));
                 doc.FilePath = path;
                 doc.Page.Text = Path.GetFileName(path);
-                lblStatus.Text = "已保存: " + path;
+                lblStatus.Text = T("Saved: ") + path;
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, "保存失败: " + ex.Message, "错误",
+                MessageBox.Show(this, T("Save failed: ") + ex.Message, T("Error"),
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -306,10 +503,10 @@ namespace AsmStudio
             {
                 using (FolderBrowserDialog dlg = new FolderBrowserDialog())
                 {
-                    dlg.Description = "选择包含 *.asmscheme 方案文件的文件夹";
+                    dlg.Description = T("Select the folder containing *.asmscheme scheme files");
                     if (dlg.ShowDialog(this) != DialogResult.OK)
                     {
-                        Log("未选择方案目录。");
+                        Log(T("No scheme folder selected."));
                         return;
                     }
                     dir = dlg.SelectedPath;
@@ -317,17 +514,18 @@ namespace AsmStudio
             }
             _schemesDir = dir;
             _schemes.AddRange(SchemeFile.ScanDirectory(dir));
-            Log("扫描方案目录: " + dir + " → " + _schemes.Count + " 个方案");
+            Log(T("Scanned scheme folder: ") + dir + " -> " + _schemes.Count + " scheme(s)");
             foreach (SchemeFile s in _schemes)
-                Log("  方案: " + s.Name + " (" + s.Steps.Count + " 步)");
+                Log("  scheme: " + s.Name + " (" + s.Steps.Count + T(" steps)"));
         }
 
         private static string FindDefaultSchemesDir()
         {
             string exeDir = AppDomain.CurrentDomain.BaseDirectory;
             string[] candidates = {
-                Path.Combine(exeDir, "Resources"),                     // 构建输出（csproj 自动复制）
-                Path.Combine(exeDir, "..", "..", "Resources"),         // 源码目录（未构建时直接读源）
+                Path.Combine(exeDir, "Resources"),                     // 构建输出（csproj 自动复制，扁平）
+                Path.Combine(exeDir, "..", "..", "..", "Resources", "Scheme"),  // 仓库根目录源码（用户整理后的 Scheme 子目录）
+                Path.Combine(exeDir, "..", "..", "..", "Resources"),   // 仓库根目录（兼容直放）
                 Path.Combine(exeDir, "Schemes"),                       // 旧位置兼容
             };
             foreach (string c in candidates)
@@ -339,14 +537,14 @@ namespace AsmStudio
         {
             if (_session == null || !_sessionConnected)
             {
-                MessageBox.Show(this, "请先连接目标。", "提示",
+                MessageBox.Show(this, T("Please connect to a target first."), T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
             if (_schemes.Count == 0) LoadSchemes();
             if (_schemes.Count == 0)
             {
-                MessageBox.Show(this, "未找到方案文件（Schemes\\*.asmscheme）。", "提示",
+                MessageBox.Show(this, "No scheme files found (Resources\\\\Scheme\\\\*.asmscheme).", T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -361,96 +559,52 @@ namespace AsmStudio
 
         private void RunScheme(SchemeFile scheme)
         {
-            Log("======== 运行方案: " + scheme.Name + " ========");
+            Log("======== Running scheme: " + scheme.Name + " ========");
             SchemeRunner runner = new SchemeRunner(_session, Log);
             List<StepLog> logs = runner.Run(scheme);
             int ok = 0;
             foreach (StepLog l in logs)
                 if (l.Success) ok++;
-            Log("======== 方案完成: " + ok + "/" + logs.Count + " 步成功 ========");
-            tabControlResults.SelectedTab = tabLog;
+            Log("======== Scheme finished: " + ok + "/" + logs.Count + " steps OK ========");
         }
 
         private void MenuToolsSelfTestClick(object sender, EventArgs e)
         {
             List<TestVectorResult> results = AsmEngine.RunSelfTest();
             int failed = 0;
-            Log("======== 汇编引擎自检 ========");
+            Log("======== Assembler self-test ========");
             foreach (TestVectorResult r in results)
             {
                 if (!r.Passed)
                 {
                     failed++;
                     Log("FAIL " + r.Name);
-                    Log("      期望: " + r.ExpectedHex);
-                    Log("      实际: " + (r.ActualHex ?? "(无)"));
+                    Log("      expected: " + r.ExpectedHex);
+                    Log("      actual: " + (r.ActualHex ?? T("(none)")));
                     if (!string.IsNullOrEmpty(r.Error))
-                        Log("      错误: " + r.Error);
+                        Log("      error: " + r.Error);
                 }
             }
-            Log("自检完成: " + (results.Count - failed) + "/" + results.Count + " 通过");
+            Log("Self-test finished: " + (results.Count - failed) + "/" + results.Count + " passed");
             MessageBox.Show(this,
-                string.Format("汇编引擎自检: {0}/{1} 个向量通过{2}",
+                string.Format(T("Assembler self-test: {0}/{1} vectors passed{2}"),
                     results.Count - failed, results.Count,
-                    failed == 0 ? "\n\n全部通过 ✓" : "\n\n存在失败项，见日志"),
-                "自检结果", MessageBoxButtons.OK,
+                    failed == 0 ? "\n\nAll passed ✓" : "\n\nFailures present, see log"),
+                T("Self-Test Result"), MessageBoxButtons.OK,
                 failed == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-            tabControlResults.SelectedTab = tabLog;
-        }
-
-        private void MenuToolsInjectClick(object sender, EventArgs e)
-        {
-            ProcessInfo target = SelectedProcess;
-            if (target == null || !_sessionConnected)
-            {
-                MessageBox.Show(this, "请先连接目标（远程线程模式）。", "提示",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-            string dllPath = FindNativeDll(target.Is64Bit);
-            if (dllPath == null)
-            {
-                MessageBox.Show(this, "找不到 AsmLibrary.dll（对应架构目录）", "错误",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-            string err = DllInjector.Inject(target, dllPath);
-            if (err == null)
-                Log("[+] 注入完成: " + dllPath);
-            else
-                Log("[!] 注入失败: " + err);
-        }
-
-        /// <summary>按目标位数查找 AsmLibrary.dll（IDE 构建输出在各工程 bin\debug 下）</summary>
-        private static string FindNativeDll(bool target64)
-        {
-            string exeDir = AppDomain.CurrentDomain.BaseDirectory;
-            string dllName = "AsmLibrary.dll";
-            string archDir = target64 ? "x64" : "x86";
-            // 仓库根 = exe(AsmStudio\bin\debug) 上三级
-            string root = Path.GetFullPath(Path.Combine(exeDir, "..", "..", ".."));
-            string[] candidates = {
-                Path.Combine(exeDir, dllName),                                    // 主程序运行目录
-                Path.Combine(root, "AsmLibrary", "bin", "debug", archDir, dllName), // CppBinding 平台子目录
-                Path.Combine(root, "AsmLibrary", "bin", "debug", dllName),          // CppBinding 输出目录
-                Path.Combine(root, "bin", archDir, dllName),                       // 旧聚合布局（若存在）
-            };
-            foreach (string c in candidates)
-                if (File.Exists(c)) return Path.GetFullPath(c);
-            return null;
         }
 
         private void MenuHelpAboutClick(object sender, EventArgs e)
         {
             MessageBox.Show(this,
-                "AsmStudio — 汇编编辑 / 校验 / 远程执行\n\n" +
-                "C# 自研汇编引擎 (Intel/AT&T, x86/x64)\n" +
-                "AsmLibrary.dll VEH 沙箱执行 + 命名管道远程通道\n\n" +
-                "仅用于自有/已授权进程的开发调试与学习。",
-                "关于", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "AsmStudio — Assemble / Validate / Remote Execute\n\n" +
+                "C# self-built assembly engine (Intel/AT&T, x86/x64)\n" +
+                "Remote channels: RemoteThread+VEH / RemoteThread (no DLL, no injection)\n\n" +
+                T("For development/debugging of your own or authorized processes only."),
+                T("About"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        // ================= 扫描 / 连接 =================
+        // ================= 扫描 / Connect =================
 
         private bool _sessionConnected;
 
@@ -513,12 +667,25 @@ namespace AsmStudio
         }
         private List<ProcessInfo> _scanResult = new List<ProcessInfo>();
 
+        private bool _scanning;   // 扫描重入保护（Click 每次点击都触发，连点会嵌套重建下拉列表）
+
         private void BtnScanClick(object sender, EventArgs e)
         {
+            if (_scanning) return;
+            _scanning = true;
             Cursor = Cursors.WaitCursor;
             try
             {
                 List<ProcessInfo> all = ProcessScanner.ScanProcesses();
+
+                // 下拉展开状态下重建列表会在原生自动补全/下拉窗里触发 AV（闪退根因）：
+                // 先收起下拉、停用 AutoComplete，重建完成后再恢复
+                System.Windows.Forms.ComboBox inner = cboProcess.ComboBox;
+                if (inner != null && inner.DroppedDown)
+                    inner.DroppedDown = false;
+                AutoCompleteMode oldMode = cboProcess.AutoCompleteMode;
+                cboProcess.AutoCompleteMode = AutoCompleteMode.None;
+
                 _scanResult = new List<ProcessInfo>();
                 cboProcess.Items.Clear();
                 foreach (ProcessInfo p in all)
@@ -527,11 +694,17 @@ namespace AsmStudio
                     _scanResult.Add(p);
                     cboProcess.Items.Add(p.ToString());
                 }
+                cboProcess.AutoCompleteMode = oldMode;
                 lblTargetArch.Text = "";
-                Log("扫描完成: " + _scanResult.Count + " 个进程");
+                Log(T("Scan finished: ") + _scanResult.Count + T(" processes"));
+            }
+            catch (Exception ex)
+            {
+                Log("[!] Scan FAILED: " + ex.Message);
             }
             finally
             {
+                _scanning = false;
                 Cursor = Cursors.Default;
             }
         }
@@ -550,17 +723,15 @@ namespace AsmStudio
             {
                 switch (cboChannel.SelectedIndex)
                 {
-                    case 1: return ExecChannel.RemoteThreadVeh;
-                    case 2: return ExecChannel.RemoteThread;
-                    case 3: return ExecChannel.InProcess;
-                    default: return ExecChannel.PipeDll;
+                    case 1: return ExecChannel.RemoteThread;
+                    default: return ExecChannel.RemoteThreadVeh;
                 }
             }
         }
 
         private void ChannelChanged(object sender, EventArgs e)
         {
-            cboProcess.Enabled = SelectedChannel != ExecChannel.InProcess;
+            cboProcess.Enabled = true;
         }
 
         private void BtnConnectClick(object sender, EventArgs e)
@@ -568,30 +739,10 @@ namespace AsmStudio
             Disconnect();
             ExecChannel channel = SelectedChannel;
 
-            if (channel == ExecChannel.InProcess)
-            {
-                _session = new TargetSession();
-                if (_session.Connect(null, ExecChannel.InProcess))
-                {
-                    _session.LoadInProcessDemoSymbols();
-                    FillSymbols();
-                    _sessionConnected = true;
-                    lblMode.Text = "已连接: 本进程 (VEH 沙箱)";
-                    Log("[+] 本进程模式就绪（演示符号: DemoAdd/DemoEcho）");
-                }
-                else
-                {
-                    Log("[!] " + _session.LastError);
-                    _session.Dispose();
-                    _session = null;
-                }
-                return;
-            }
-
             ProcessInfo target = SelectedProcess;
             if (target == null)
             {
-                MessageBox.Show(this, "请先扫描并选择目标进程。", "提示",
+                MessageBox.Show(this, T("Please scan and select a target process first."), T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -599,51 +750,18 @@ namespace AsmStudio
             cboProcess.Text = target.ToString();   // 手输名称规整为完整项文本
 
             _session = new TargetSession();
-            bool ok;
-            if (channel == ExecChannel.PipeDll)
-            {
-                ok = _session.Connect(target, ExecChannel.PipeDll);
-                if (!ok && !TargetSession.HasPipe(target.Pid))
-                {
-                    // 管道不通 → 询问是否回退到远程线程+汇编VEH（无 DLL）
-                    DialogResult dr = MessageBox.Show(this,
-                        "目标未加载 AsmLibrary（管道不存在）。\n\n" +
-                        "改用【远程线程+VEH】模式连接吗？\n" +
-                        "(无 DLL 注入，汇编级崩溃保护)",
-                        "回退模式", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-                    if (dr == DialogResult.Yes)
-                    {
-                        _session.Dispose();
-                        _session = new TargetSession();
-                        channel = ExecChannel.RemoteThreadVeh;
-                        ok = _session.Connect(target, ExecChannel.RemoteThreadVeh);
-                        if (!ok)
-                        {
-                            Log("[!] " + _session.LastError);
-                            _session.Dispose();
-                            _session = null;
-                            return;
-                        }
-                        cboChannel.SelectedIndex = 1;
-                    }
-                }
-            }
-            else
-            {
-                ok = _session.Connect(target, channel);
-            }
+            bool ok = _session.Connect(target, channel);
 
             if (ok)
             {
                 _sessionConnected = true;
-                FillSymbols();
-                lblMode.Text = string.Format("已连接: {0} pid={1} {2} [{3}]",
+                FillRemoteModules();
+                lblMode.Text = string.Format(T("Connected: {0} pid={1} {2} [{3}]"),
                     target.Name, target.Pid, target.ArchText, channel);
-                Log("[+] 已连接 " + target.Name + " (pid=" + target.Pid + ", " +
-                    target.ArchText + ", 通道=" + channel + ")");
-                Log("    符号 " + _session.Symbols.Count + " 个");
-                // 自动切换架构选择
-                if (channel == ExecChannel.PipeDll || channel == ExecChannel.RemoteThread)
+                Log(T("[+] Connected ") + target.Name + " (pid=" + target.Pid + ", " +
+                    target.ArchText + ", channel=" + channel + ")");
+                // 远程线程通道自动切换架构选择
+                if (channel == ExecChannel.RemoteThread)
                 {
                     if (target.Is64Bit) rbX64.Checked = true;
                     else rbX86.Checked = true;
@@ -651,7 +769,7 @@ namespace AsmStudio
             }
             else
             {
-                Log("[!] 连接失败: " + _session.LastError);
+                Log("[!] ConnectFAILED: " + _session.LastError);
                 _session.Dispose();
                 _session = null;
             }
@@ -660,8 +778,8 @@ namespace AsmStudio
         private void BtnDisconnectClick(object sender, EventArgs e)
         {
             Disconnect();
-            lblMode.Text = "未连接";
-            Log("[-] 已断开");
+            lblMode.Text = T("Not Connected");
+            Log(T("[-] Disconnected"));
         }
 
         private void Disconnect()
@@ -675,32 +793,15 @@ namespace AsmStudio
             cboSymbol.Items.Clear();
         }
 
-        private void BtnSymbolsClick(object sender, EventArgs e)
-        {
-            if (_session != null && _sessionConnected)
-            {
-                _session.RefreshSymbols();
-                FillSymbols();
-                Log("[+] 符号表已刷新: " + _session.Symbols.Count + " 个");
-            }
-            else if (_sessionConnected && _session != null && _session.Target != null)
-            {
-                // 无管道（RemoteThreadVeh/RemoteThread）：从目标内存解析模块导出表
-                FillRemoteModules();
-            }
-            else
-            {
-                Log("[!] 请先连接目标。");
-            }
-        }
-
-        // ---- 无管道符号源：模块列表 → 模块导出 API ----
+        // ---- 远程符号源：模块列表 → 模块导出 API ----
 
         private List<RemoteSymbols.ModuleInfo> _remoteModules =
             new List<RemoteSymbols.ModuleInfo>();
         private List<SymbolInfo> _remoteExports = new List<SymbolInfo>();
-        private int _symbolMode;   // 0=管道 1=模块列表 2=某模块导出
+        private int _symbolMode;   // 1=模块列表 2=某模块导出
 
+        /// <summary>连接后自动填充模块列表。不自动钻进第一个模块——
+        /// 多数程序自身导出为 0，钻进去只会得到空下拉（实测教训）。</summary>
         private void FillRemoteModules()
         {
             _symbolTable.Clear();
@@ -710,13 +811,13 @@ namespace AsmStudio
             foreach (RemoteSymbols.ModuleInfo m in _remoteModules)
                 cboSymbol.Items.Add(m.Name);
             _symbolMode = 1;
-            Log("[+] 模块列表已刷新: " + _remoteModules.Count + " 个（选择模块可查看其导出 API）");
-            if (cboSymbol.Items.Count > 0) cboSymbol.SelectedIndex = 0;
+            cboSymbol.SelectedIndex = -1;   // 保持模块列表视图，不触发钻取
+            Log("[+] Module list refreshed: " + _remoteModules.Count + T(" (select a module to list its exports)"));
         }
 
         private void LoadRemoteExports(RemoteSymbols.ModuleInfo m)
         {
-            Log("[*] 正在解析 " + m.Name + " 导出表 ...");
+            Log("[*] Parsing exports of " + m.Name + " ...");
             Cursor = Cursors.WaitCursor;
             try
             {
@@ -727,6 +828,19 @@ namespace AsmStudio
             {
                 Cursor = Cursors.Default;
             }
+            if (_remoteExports.Count == 0)
+            {
+                // 该模块无导出 → 记录并回退模块列表视图（避免空下拉）
+                Log("[+] " + m.Name + T(" exports: 0 (module has no exported APIs)"));
+                _symbolTable.Clear();
+                _remoteExports.Clear();
+                cboSymbol.Items.Clear();
+                foreach (RemoteSymbols.ModuleInfo mm in _remoteModules)
+                    cboSymbol.Items.Add(mm.Name);
+                _symbolMode = 1;
+                cboSymbol.SelectedIndex = -1;
+                return;
+            }
             _symbolTable.Clear();
             cboSymbol.Items.Clear();
             foreach (SymbolInfo s in _remoteExports)
@@ -735,25 +849,9 @@ namespace AsmStudio
                 cboSymbol.Items.Add(s.ToString());
             }
             _symbolMode = 2;
-            Log("[+] " + m.Name + " 导出 API: " + _remoteExports.Count +
-                " 个（选择 API 即填入调用目标）");
+            Log("[+] " + m.Name + T(" exports: ") + _remoteExports.Count +
+                T(" (select an API to fill the call target)"));
             if (cboSymbol.Items.Count > 0) cboSymbol.SelectedIndex = 0;
-        }
-
-        private void FillSymbols()
-        {
-            _symbolTable.Clear();
-            cboSymbol.Items.Clear();
-            _symbolMode = 0;
-            if (_session == null) return;
-            foreach (SymbolInfo s in _session.Symbols)
-            {
-                _symbolTable.Add(s.Name, s.Address);
-                cboSymbol.Items.Add(s.ToString());
-            }
-            if (cboSymbol.Items.Count > 0) cboSymbol.SelectedIndex = 0;
-            foreach (DocInfo d in _docs)
-                d.Editor.SetErrorLines(new int[0]);
         }
 
         private void CboSymbolSelectedIndexChanged(object sender, EventArgs e)
@@ -779,21 +877,6 @@ namespace AsmStudio
                         chkModeCall.Checked = true;
                     }
                 }
-                return;
-            }
-            SymbolInfo ps = SelectedSymbol;
-            if (ps != null)
-                txtCallTarget.Text = ps.Name;
-        }
-
-        private SymbolInfo SelectedSymbol
-        {
-            get
-            {
-                if (_session == null || cboSymbol.SelectedIndex < 0 ||
-                    cboSymbol.SelectedIndex >= _session.Symbols.Count)
-                    return null;
-                return _session.Symbols[cboSymbol.SelectedIndex];
             }
         }
 
@@ -824,7 +907,7 @@ namespace AsmStudio
                             doc.Editor.Text, doc.DocSyntax, now);
                         doc.Editor.Text = converted;
                     }
-                    catch { /* 转换失败保持原文 */ }
+                    catch { /* 转换FAILED保持原文 */ }
                 }
                 doc.DocSyntax = now;
                 doc.Editor.Syntax = rbAtt.Checked
@@ -838,10 +921,13 @@ namespace AsmStudio
             ValidateCurrent();
         }
 
-        // ================= 校验 / 汇编 / 执行 =================
+        // ================= 校验 / 汇编 / 执Row =================
 
         private void EditorTextChangedDelayed(object sender, EventArgs e)
         {
+            DocInfo doc = CurrentDoc;
+            if (doc != null && ReferenceEquals(sender, doc.Editor))
+                doc.UntouchedDefault = false;   // 用户已编辑，不再自动重翻
             ValidateCurrent();
         }
 
@@ -855,8 +941,8 @@ namespace AsmStudio
             lstErrors.Items.Clear();
             foreach (AsmError err in errors)
                 lstErrors.Items.Add(err.ToString());
-            lblStatus.Text = "行 " + doc.Editor.CaretLine + ", 列 " + doc.Editor.CaretColumn +
-                "  |  " + (errors.Count == 0 ? "校验通过" : (errors.Count + " 个错误"));
+            lblStatus.Text = T("Row ") + doc.Editor.CaretLine + T(", Col ") + doc.Editor.CaretColumn +
+                "  |  " + (errors.Count == 0 ? T("Validation passed") : (errors.Count + T(" errors")));
         }
 
         private static List<int> GetErrorLines(List<AsmError> errors)
@@ -869,12 +955,12 @@ namespace AsmStudio
 
         private void LstErrorsDoubleClick(object sender, EventArgs e)
         {
-            // 双击错误 → 定位（简单实现：选中行首）
+            // 双击Error → 定位（简单实现：选中行首）
             DocInfo doc = CurrentDoc;
             if (doc == null || lstErrors.SelectedIndex < 0) return;
             string text = lstErrors.SelectedItem as string;
             if (text == null) return;
-            int li = text.IndexOf("行 ");
+            int li = text.IndexOf(T("Row "));
             int lineNo = 0;
             if (li >= 0)
             {
@@ -908,16 +994,14 @@ namespace AsmStudio
             opt.Arch = CurrentArch;
             opt.Symbols = _symbolTable;
             opt.BaseAddress = 0;
-            if (_session != null && _session.Channel == ExecChannel.PipeDll)
-                opt.RetTrapAddress = _session.GateAddress;
             AssembleResult result = AsmEngine.Assemble(doc.Editor.Text, opt);
             if (result.Success)
             {
                 txtHex.Text = result.Hex;
-                lblStatus.Text = "汇编成功: " + result.Code.Length + " 字节";
-                Log("[+] 汇编成功: " + result.Code.Length + " 字节");
+                lblStatus.Text = T("Assembled OK: ") + result.Code.Length + " bytes";
+                Log("[+] Assembled OK: " + result.Code.Length + " bytes");
                 foreach (KeyValuePair<string, ulong> kv in result.Labels)
-                    Log("    标签 " + kv.Key + " = +0x" + kv.Value.ToString("x"));
+                    Log(T("    label ") + kv.Key + " = +0x" + kv.Value.ToString("x"));
                 tabControlResults.SelectedTab = tabHex;
             }
             else
@@ -926,7 +1010,7 @@ namespace AsmStudio
                 lstErrors.Items.Clear();
                 foreach (AsmError err in result.Errors)
                     lstErrors.Items.Add(err.ToString());
-                Log("[!] 汇编失败: " + result.Errors.Count + " 个错误");
+                Log("[!] Assembly failed: " + result.Errors.Count + T(" errors"));
                 tabControlResults.SelectedTab = tabErrors;
             }
         }
@@ -937,7 +1021,7 @@ namespace AsmStudio
             if (doc == null) return;
             if (!_sessionConnected || _session == null)
             {
-                MessageBox.Show(this, "请先连接目标。", "提示",
+                MessageBox.Show(this, T("Please connect to a target first."), T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -947,8 +1031,6 @@ namespace AsmStudio
             opt.Arch = CurrentArch;
             opt.Symbols = _symbolTable;
             opt.BaseAddress = 0;
-            if (_session != null && _session.Channel == ExecChannel.PipeDll)
-                opt.RetTrapAddress = _session.GateAddress;
             AssembleResult result = AsmEngine.Assemble(doc.Editor.Text, opt);
             if (!result.Success)
             {
@@ -956,7 +1038,7 @@ namespace AsmStudio
                 foreach (AsmError err in result.Errors)
                     lstErrors.Items.Add(err.ToString());
                 tabControlResults.SelectedTab = tabErrors;
-                MessageBox.Show(this, "汇编失败，请先修正错误。", "错误",
+                MessageBox.Show(this, "Assembly failed — fix the errors first.", T("Error"),
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
@@ -969,17 +1051,9 @@ namespace AsmStudio
             bool modeCall = chkModeCall.Checked && callTarget != 0;
             int timeout = ParseTimeout();
 
-            Log("======== 执行 (" + result.Code.Length + " 字节, " +
-                (modeCall ? "call=" + txtCallTarget.Text : "code 模式") + ") ========");
-            ExecutionResult r;
-            if (_session.Channel == ExecChannel.InProcess)
-            {
-                r = _session.ExecuteLocal(result.Code, args, nargs, callTarget, timeout);
-            }
-            else
-            {
-                r = _session.Execute(result.Code, args, nargs, callTarget, modeCall, timeout);
-            }
+            Log("======== Execute (" + result.Code.Length + T(" bytes, ") +
+                (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) + ") ========");
+            ExecutionResult r = _session.Execute(result.Code, args, nargs, callTarget, modeCall, timeout);
             ShowResult(r);
         }
 
@@ -994,22 +1068,20 @@ namespace AsmStudio
                     tabControlResults.SelectedTab = tabRegs;
                     break;
                 case ExecStatus.Exception:
-                    Log("[VEH] 捕获异常 " + r.ExceptionName +
+                    Log(T("[VEH] caught exception ") + r.ExceptionName +
                         " @ 0x" + r.ExcAddr.ToString("X") +
                         (r.ExcWasAccessViolation
-                            ? (r.ExcReadOrWrite == 0 ? " (读违例)"
-                               : (r.ExcReadOrWrite == 1 ? " (写违例)" : ""))
+                            ? (r.ExcReadOrWrite == 0 ? T(" (read)")
+                               : (r.ExcReadOrWrite == 1 ? T(" (write)") : ""))
                             : "") +
-                        " — 目标进程存活");
+                        T(" — target survived"));
                     tabControlResults.SelectedTab = tabRegs;
                     break;
                 case ExecStatus.Timeout:
                     Log("[TIMEOUT] " + r.Message);
-                    tabControlResults.SelectedTab = tabLog;
                     break;
                 default:
                     Log("[ERR] " + r.Message);
-                    tabControlResults.SelectedTab = tabLog;
                     break;
             }
         }
@@ -1017,47 +1089,61 @@ namespace AsmStudio
         private string BuildRegsReport(ExecutionResult r)
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("状态: " + r.Status + (string.IsNullOrEmpty(r.Message) ? "" : ("  (" + r.Message + ")")));
+            sb.AppendLine("Status: " + r.Status + (string.IsNullOrEmpty(r.Message) ? "" : ("  (" + r.Message + ")")));
             sb.AppendLine();
             if (r.Status == ExecStatus.Exception)
             {
-                sb.AppendLine("== 异常现场 (VEH 快照) ==");
-                sb.AppendLine("异常码: 0x" + r.ExcCode.ToString("X8") + " (" + r.ExceptionName + ")");
-                sb.AppendLine("异常地址: 0x" + r.ExcAddr.ToString("X") +
+                sb.AppendLine("== Exception state (VEH snapshot) ==");
+                sb.AppendLine("Exception code: 0x" + r.ExcCode.ToString("X8") + " (" + r.ExceptionName + ")");
+                sb.AppendLine("Exception address: 0x" + r.ExcAddr.ToString("X") +
                     (r.ExcWasAccessViolation
-                        ? (r.ExcReadOrWrite == 0 ? "  [访问违例: 读]" : (r.ExcReadOrWrite == 1 ? "  [访问违例: 写]" : ""))
+                        ? (r.ExcReadOrWrite == 0 ? "  [access violation: read]" : (r.ExcReadOrWrite == 1 ? "  [access violation: write]" : ""))
                         : ""));
-                sb.AppendLine("异常 RIP: 0x" + r.ExcRip.ToString("X"));
-                AppendRegs(sb, "异常时寄存器", r.RegsExc);
-                sb.AppendLine("异常 EFLAGS: 0x" + r.FlagsExc.ToString("X"));
+                sb.AppendLine("Exception RIP: 0x" + r.ExcRip.ToString("X"));
+                AppendRegs(sb, "Registers at exception", r.RegsExc);
+                sb.AppendLine("Exception EFLAGS: 0x" + r.FlagsExc.ToString("X"));
                 sb.AppendLine();
             }
-            sb.AppendLine("== 用户代码执行完 (call 前) ==");
+            sb.AppendLine("== After user code executed (pre-call) ==");
             AppendRegs(sb, "regs_mid", r.RegsMid);
             sb.AppendLine("EFLAGS: 0x" + r.FlagsMid.ToString("X"));
             sb.AppendLine();
-            sb.AppendLine("== 最终寄存器 ==");
+            sb.AppendLine("== Final registers ==");
             AppendRegs(sb, "regs_final", r.RegsFinal);
             sb.AppendLine("EFLAGS: 0x" + r.FlagsFinal.ToString("X"));
             sb.AppendLine();
-            sb.AppendLine("返回值 RAX = 0x" + r.RetValue.ToString("X") +
+            sb.AppendLine("Return value RAX = 0x" + r.RetValue.ToString("X") +
                 "  (" + ((long)r.RetValue).ToString() + ")");
             return sb.ToString();
         }
 
-        private static void AppendRegs(StringBuilder sb, string title, ulong[] regs)
+        private static readonly string[] _regNames32 =
+            { "eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi" };
+
+        private bool TargetIs32Bit
         {
+            get
+            {
+                TargetSession s = _session;
+                return s != null && s.Target != null && !s.Target.Is64Bit;
+            }
+        }
+
+        private void AppendRegs(StringBuilder sb, string title, ulong[] regs)
+        {
+            bool is32 = TargetIs32Bit;
             sb.AppendLine("[" + title + "]");
-            for (int i = 0; i < RegIdx.Count; i += 2)
+            int count = is32 ? 8 : RegIdx.Count;   // x86 只显示 8 个 32 位寄存器
+            for (int i = 0; i < count; i += 2)
             {
                 sb.Append("  ");
-                sb.Append(RegIdx.Name(i).PadRight(4));
+                sb.Append((is32 ? _regNames32[i] : RegIdx.Name(i)).PadRight(4));
                 sb.Append("= 0x");
-                sb.Append(regs[i].ToString("X16"));
+                sb.Append(regs[i].ToString(is32 ? "X8" : "X16"));
                 sb.Append("    ");
-                sb.Append(RegIdx.Name(i + 1).PadRight(4));
+                sb.Append((is32 ? _regNames32[i + 1] : RegIdx.Name(i + 1)).PadRight(4));
                 sb.Append("= 0x");
-                sb.AppendLine(regs[i + 1].ToString("X16"));
+                sb.AppendLine(regs[i + 1].ToString(is32 ? "X8" : "X16"));
             }
         }
 
@@ -1105,9 +1191,15 @@ namespace AsmStudio
             return int.TryParse((txtTimeout.Text ?? "").Trim(), out v) ? v : 3000;
         }
 
-        private void BtnClearLogClick(object sender, EventArgs e)
+        private void MenuLogClearClick(object sender, EventArgs e)
         {
             txtLog.Clear();
+        }
+
+        /// <summary>多语言翻译快捷入口（以中文原文为键查语言表）</summary>
+        private static string T(string text)
+        {
+            return LanguageService.T(text);
         }
 
         private void Log(string line)
