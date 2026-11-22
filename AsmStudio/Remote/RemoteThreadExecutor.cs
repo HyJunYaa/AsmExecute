@@ -6,6 +6,7 @@
 // vehData != 0 时启用汇编 VEH 联动: 桩入口记录 savedRsp 并置 flag=1，
 //   崩溃由 AsmVeh handler 在 handler 内 ExitThread 终止故障线程（异常被吞，进程存活）。
 using System;
+using AsmStudio.Localization;
 using System.Collections.Generic;
 
 namespace AsmStudio.Remote
@@ -15,7 +16,7 @@ namespace AsmStudio.Remote
         /* data 布局 (x64): +0 code, +8 result, +16 ExitThread, +24 target;
          * args 由 stub 内 imm 直接编码 */
 
-        /// <summary>诊断开关: true 时把生成的 stub/veh 数据转储到 %TEMP%\asmstub.bin</summary>
+        /// <summary>诊Disconnect关: true 时把生成的 stub/veh data转储到 %TEMP%\asmstub.bin</summary>
         public static bool DumpStub;
 
         public static ExecutionResult Execute(ProcessInfo target, byte[] code,
@@ -28,7 +29,7 @@ namespace AsmStudio.Remote
             if (proc == IntPtr.Zero)
             {
                 r.Status = ExecStatus.Internal;
-                r.Message = "OpenProcess 失败 (err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
+                r.Message = "OpenProcess FAILED (err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
                 return r;
             }
 
@@ -36,7 +37,7 @@ namespace AsmStudio.Remote
             IntPtr thread = IntPtr.Zero;
             try
             {
-                // 远程内存: [stub][DATA_SIZE data][user code + ret]
+                // 远程memory: [stub][DATA_SIZE data][user code + ret]
                 byte[] userCode;
                 ulong stubCallTarget = callTarget;
                 if (vehData != 0 && callTarget != 0)
@@ -47,7 +48,7 @@ namespace AsmStudio.Remote
                     if (nargs > 4)
                     {
                         r.Status = ExecStatus.BadArg;
-                        r.Message = "汇编 VEH 通道远程 call 暂只支持 4 个以内参数";
+                        r.Message = "Remote call on the assembly-VEH channel supports at most 4 arguments";
                         return r;
                     }
                     List<byte> pre = new List<byte>();
@@ -78,7 +79,7 @@ namespace AsmStudio.Remote
                 if (exitThread == 0)
                 {
                     r.Status = ExecStatus.Internal;
-                    r.Message = "无法从目标进程导出表解析 ExitThread";
+                    r.Message = LanguageService.T("Cannot resolve ExitThread from the target export table");
                     return r;
                 }
                 int epilogueOff;
@@ -95,7 +96,7 @@ namespace AsmStudio.Remote
                 if (remote == IntPtr.Zero)
                 {
                     r.Status = ExecStatus.Internal;
-                    r.Message = "VirtualAllocEx 失败";
+                    r.Message = "VirtualAllocEx FAILED";
                     return r;
                 }
 
@@ -126,7 +127,7 @@ namespace AsmStudio.Remote
                 // 写入三段
                 UIntPtr written;
                 if (!NativeInterop.WriteProcessMemory(proc, remote, stub, (UIntPtr)stub.Length, out written))
-                { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(stub) 失败"; return r; }
+                { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(stub) FAILED"; return r; }
                 if (DumpStub)
                 {
                     byte[] dbg = new byte[stub.Length + 64];
@@ -140,10 +141,10 @@ namespace AsmStudio.Remote
                         " epilogueOff=" + epilogueOff + " dataBase=0x" + dataBase.ToInt64().ToString("X"));
                 }
                 if (!NativeInterop.WriteProcessMemory(proc, dataBase, data, (UIntPtr)DATA_SIZE, out written))
-                { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(data) 失败"; return r; }
+                { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(data) FAILED"; return r; }
                 if (userCode.Length > 1 &&
                     !NativeInterop.WriteProcessMemory(proc, codeBase, userCode, (UIntPtr)userCode.Length, out written))
-                { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(code) 失败"; return r; }
+                { r.Status = ExecStatus.Internal; r.Message = "WriteProcessMemory(code) FAILED"; return r; }
 
                 // CreateRemoteThread: 参数 = data 地址
                 IntPtr tid;
@@ -152,7 +153,7 @@ namespace AsmStudio.Remote
                 if (thread == IntPtr.Zero)
                 {
                     r.Status = ExecStatus.Internal;
-                    r.Message = "CreateRemoteThread 失败 (err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
+                    r.Message = "CreateRemoteThread FAILED (err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
                     return r;
                 }
 
@@ -161,7 +162,7 @@ namespace AsmStudio.Remote
                 if (wait != 0 /* WAIT_OBJECT_0 */)
                 {
                     r.Status = ExecStatus.Timeout;
-                    r.Message = "远程线程超时（线程仍在运行，未终止）";
+                    r.Message = LanguageService.T("Remote thread timed out (thread still running, not terminated)");
                     return r;
                 }
 
@@ -172,13 +173,13 @@ namespace AsmStudio.Remote
                 if (!NativeInterop.ReadProcessMemory(proc, resultAddr, resultBuf, (UIntPtr)8, out read))
                 {
                     r.Status = ExecStatus.Internal;
-                    r.Message = "ReadProcessMemory 失败";
+                    r.Message = "ReadProcessMemory FAILED";
                     return r;
                 }
                 r.Status = ExecStatus.Ok;
                 r.RetValue = BitConverter.ToUInt64(resultBuf, 0);
                 r.RegsFinal[RegIdx.Rax] = r.RetValue;
-                r.Message = vehData != 0 ? "远程线程+汇编VEH（无DLL）" : "RemoteThread 模式";
+                r.Message = vehData != 0 ? LanguageService.T("RemoteThread+assembly VEH (no DLL)") : LanguageService.T("RemoteThread mode");
                 return r;
             }
             finally
@@ -198,7 +199,7 @@ namespace AsmStudio.Remote
         /* ---- x64 stub ----
          * rbx = data(rcx)；
          * [rbx+0]=code, [rbx+8]=result, [rbx+16]=ExitThread, [rbx+24]=target
-         * 顺序: VEH 联动记录 → 执行 code（若有）→ call target → 存 rax → 清 flag → ExitThread(0) */
+         * 顺序: VEH 联动记录 → 执Row code（若有）→ call target → 存 rax → 清 flag → ExitThread(0) */
         private static byte[] BuildStubX64(int codeLen, ulong[] args, int nargs, ulong callTarget,
             ulong vehData, ulong exitThread, out int epilogueOff)
         {
@@ -244,7 +245,7 @@ namespace AsmStudio.Remote
                 s.AddRange(new byte[] { 0xC7, 0x00, 0x00, 0x00, 0x00, 0x00 });        // mov dword [rax], 0
             }
             /* 注意: 不做 pop —— 线程以 ExitThread 终止，永不返回；
-             * ExitThread 经寄存器间接调用（call [rbx+16] 内存间接形式实测会崩，见 veh_probe9） */
+             * ExitThread 经寄存器间接调用（call [rbx+16] memory间接形式实测会崩，见 veh_probe9） */
             s.AddRange(new byte[] { 0x31, 0xC9 });               // xor ecx, ecx（exit code 0）
             s.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(s, exitThread);  // movabs rax, ExitThread
             s.AddRange(new byte[] { 0xFF, 0xD0 });               // call rax（不返回）
@@ -301,7 +302,7 @@ namespace AsmStudio.Remote
                 AddD(s, 0);
             }
             /* 注意: 不做 pop —— 线程以 ExitThread 终止，永不返回；
-             * ExitThread 经寄存器间接调用（call [ebx+16] 内存间接形式实测会崩） */
+             * ExitThread 经寄存器间接调用（call [ebx+16] memory间接形式实测会崩） */
             s.AddRange(new byte[] { 0x6A, 0x00 });               // push 0（exit code 0）
             s.Add(0xB8); AddD(s, (uint)exitThread);              // mov eax, ExitThread
             s.AddRange(new byte[] { 0xFF, 0xD0 });               // call eax（不返回）

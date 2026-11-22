@@ -69,9 +69,11 @@
   </ItemGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- 无 targeting pack 时框架程序集/mscorlib/norm*.nlp 会误复制到输出目录，构建后清理 -->
+  <!-- 无 targeting pack 时框架程序集/mscorlib/norm*.nlp 会误复制到输出目录，构建后清理。
+       用 MSBuildProjectDirectory 锚定输出根：命令行传相对 OutputPath 时它按进程 cwd 解析会指错。
+       x64/x86 两个输出目录都清理（批处理双架构构建共用本工程） -->
   <Target Name="RemoveFrameworkCopies" AfterTargets="Build">
-    <Delete Files="$(OutputPath)mscorlib.dll" />
-    <Delete Files="$(OutputPath)normidna.nlp;$(OutputPath)normnfc.nlp;$(OutputPath)normnfd.nlp;$(OutputPath)normnfkc.nlp;$(OutputPath)normnfkd.nlp" />
+    <Delete Files="$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x64\mscorlib.dll;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x86\mscorlib.dll" />
+    <Delete Files="$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x64\normidna.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x64\normnfc.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x64\normnfd.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x64\normnfkc.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x64\normnfkd.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x86\normidna.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x86\normnfc.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x86\normnfd.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x86\normnfkc.nlp;$(MSBuildProjectDirectory)\..\bin\$(Configuration)\x86\normnfkd.nlp" />
   </Target>
 </Project>

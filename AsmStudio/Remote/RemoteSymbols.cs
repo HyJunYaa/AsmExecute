@@ -18,7 +18,7 @@ namespace AsmStudio.Remote
 
             public override string ToString()
             {
-                return Name + "  (0x" + Base.ToString("X") + ", " + Size + " 字节)";
+                return Name + "  (0x" + Base.ToString("X") + ", " + Size + " bytes)";
             }
         }
 

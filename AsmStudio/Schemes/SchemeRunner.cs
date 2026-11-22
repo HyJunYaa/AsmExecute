@@ -1,6 +1,7 @@
 // SchemeRunner.cs - 方案执行器：按顺序跑完一个 .asmscheme 的所有步骤
 // 占位符: {SymbolName} → 已解析符号地址（注入为 0x 十六进制文本）
 using System;
+using AsmStudio.Localization;
 using System.Collections.Generic;
 using System.Text;
 using AsmStudio.Engine;
@@ -37,7 +38,7 @@ namespace AsmStudio.Schemes
                 SchemeStep st = scheme.Steps[i];
                 StepLog entry = new StepLog();
                 entry.Index = i + 1;
-                entry.Title = string.IsNullOrEmpty(st.Title) ? ("步骤 " + (i + 1)) : st.Title;
+                entry.Title = string.IsNullOrEmpty(st.Title) ? ("Step " + (i + 1)) : st.Title;
                 try
                 {
                     entry.Result = ExecuteStep(scheme, st);
@@ -47,17 +48,17 @@ namespace AsmStudio.Schemes
                 catch (Exception ex)
                 {
                     entry.Success = false;
-                    entry.Detail = "异常: " + ex.Message;
+                    entry.Detail = "Exception: " + ex.Message;
                 }
                 logs.Add(entry);
                 _log(string.Format("[{0}/{1}] {2}: {3}",
                     entry.Index, scheme.Steps.Count,
-                    entry.Success ? "OK " : "失败",
+                    entry.Success ? "OK " : "FAILED",
                     entry.Title));
                 _log("    " + entry.Detail);
                 if (!entry.Success)
                 {
-                    _log("方案在步骤 " + entry.Index + " 失败，中止后续步骤。");
+                    _log(LanguageService.T("Scheme aborted at step ") + entry.Index + " FAILED, stopping remaining steps.");
                     break;
                 }
             }
@@ -66,7 +67,7 @@ namespace AsmStudio.Schemes
 
         private static string Describe(ExecutionResult r)
         {
-            if (r == null) return "(无结果)";
+            if (r == null) return "(no result)";
             StringBuilder sb = new StringBuilder();
             switch (r.Status)
             {
@@ -75,15 +76,15 @@ namespace AsmStudio.Schemes
                     sb.Append("  rax=0x").Append(r.RegsFinal[RegIdx.Rax].ToString("X"));
                     break;
                 case ExecStatus.Exception:
-                    sb.Append("异常 ").Append(r.ExceptionName);
-                    sb.Append(" 地址=0x").Append(r.ExcAddr.ToString("X"));
+                    sb.Append("exception ").Append(r.ExceptionName);
+                    sb.Append(" addr=0x").Append(r.ExcAddr.ToString("X"));
                     sb.Append(r.ExcWasAccessViolation
-                        ? (r.ExcReadOrWrite == 0 ? " (读违例)" : (r.ExcReadOrWrite == 1 ? " (写违例)" : ""))
+                        ? (r.ExcReadOrWrite == 0 ? LanguageService.T(" (read)") : (r.ExcReadOrWrite == 1 ? LanguageService.T(" (write)") : ""))
                         : "");
-                    sb.Append("  [VEH 已恢复]");
+                    sb.Append("  [VEH recovered]");
                     break;
                 case ExecStatus.Timeout:
-                    sb.Append("超时");
+                    sb.Append("timeout");
                     break;
                 default:
                     sb.Append(r.Message);
@@ -150,20 +151,19 @@ namespace AsmStudio.Schemes
             // 占位符替换: {SymbolName} → 0x<addr>
             string source = ReplacePlaceholders(st.Code ?? "", symbols);
 
-            // 汇编（远程模式启用 ret 网关改写）
+            // 汇编
             AssembleOptions opt = new AssembleOptions();
             opt.Syntax = syntax;
             opt.Arch = arch;
             opt.Symbols = symbols;
             opt.BaseAddress = 0;
-            opt.RetTrapAddress = _session.GateAddress;
             AssembleResult asm = AsmEngine.Assemble(source, opt);
             if (!asm.Success)
             {
                 ExecutionResult err = new ExecutionResult();
                 err.Status = ExecStatus.BadArg;
-                err.Message = "汇编失败: " +
-                    (asm.Errors.Count > 0 ? asm.Errors[0].ToString() : "未知错误");
+                err.Message = LanguageService.T("Assembly failed: ") +
+                    (asm.Errors.Count > 0 ? asm.Errors[0].ToString() : LanguageService.T("unknown error"));
                 return err;
             }
 

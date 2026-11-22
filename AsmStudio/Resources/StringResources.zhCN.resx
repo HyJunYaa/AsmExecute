@@ -1,0 +1,432 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="&amp;File" xml:space="preserve">
+    <value>文件(&amp;F)</value>
+  </data>
+  <data name="&amp;New" xml:space="preserve">
+    <value>新建(&amp;N)</value>
+  </data>
+  <data name="&amp;Open..." xml:space="preserve">
+    <value>打开(&amp;O)...</value>
+  </data>
+  <data name="&amp;Save" xml:space="preserve">
+    <value>保存(&amp;S)</value>
+  </data>
+  <data name="E&amp;xit" xml:space="preserve">
+    <value>退出(&amp;X)</value>
+  </data>
+  <data name="&amp;Edit" xml:space="preserve">
+    <value>编辑(&amp;E)</value>
+  </data>
+  <data name="&amp;Undo" xml:space="preserve">
+    <value>撤回(&amp;U)</value>
+  </data>
+  <data name="&amp;Redo" xml:space="preserve">
+    <value>重做(&amp;R)</value>
+  </data>
+  <data name="&amp;Schemes" xml:space="preserve">
+    <value>方案(&amp;P)</value>
+  </data>
+  <data name="&amp;Scan Scheme Folder" xml:space="preserve">
+    <value>扫描方案目录(&amp;L)</value>
+  </data>
+  <data name="&amp;Run Selected Scheme..." xml:space="preserve">
+    <value>运行选定方案(&amp;R)...</value>
+  </data>
+  <data name="&amp;Tools" xml:space="preserve">
+    <value>工具(&amp;T)</value>
+  </data>
+  <data name="Assembler &amp;Self-Test" xml:space="preserve">
+    <value>汇编引擎自检(&amp;S)</value>
+  </data>
+  <data name="&amp;Inject AsmLibrary.dll..." xml:space="preserve">
+    <value>注入 AsmLibrary.dll(&amp;I)...</value>
+  </data>
+  <data name="&amp;Language" xml:space="preserve">
+    <value>语言(&amp;L)</value>
+  </data>
+  <data name="&amp;Help" xml:space="preserve">
+    <value>帮助(&amp;H)</value>
+  </data>
+  <data name="&amp;About..." xml:space="preserve">
+    <value>关于(&amp;A)...</value>
+  </data>
+  <data name="&amp;Close" xml:space="preserve">
+    <value>关闭(&amp;C)</value>
+  </data>
+  <data name="&amp;Save This" xml:space="preserve">
+    <value>单独保存(&amp;S)</value>
+  </data>
+  <data name="Close &amp;Others" xml:space="preserve">
+    <value>关闭其他(&amp;O)</value>
+  </data>
+  <data name="Close &amp;All" xml:space="preserve">
+    <value>全部关闭(&amp;A)</value>
+  </data>
+  <data name="&amp;Clear Log" xml:space="preserve">
+    <value>清理日志(&amp;C)</value>
+  </data>
+  <data name="Scan Processes" xml:space="preserve">
+    <value>扫描进程</value>
+  </data>
+  <data name="RemoteThread+VEH (no DLL)" xml:space="preserve">
+    <value>远程线程+VEH (无DLL)</value>
+  </data>
+  <data name="Remote Thread (unprotected)" xml:space="preserve">
+    <value>远程线程 (无保护)</value>
+  </data>
+  <data name="In-process (quick test)" xml:space="preserve">
+    <value>本进程 (快速试验)</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>断开</value>
+  </data>
+  <data name="Refresh Symbols" xml:space="preserve">
+    <value>刷新符号表</value>
+  </data>
+  <data name="Syntax Style" xml:space="preserve">
+    <value>语法风格</value>
+  </data>
+  <data name="Target Arch" xml:space="preserve">
+    <value>目标架构</value>
+  </data>
+  <data name="Call Settings" xml:space="preserve">
+    <value>调用设置</value>
+  </data>
+  <data name="Call target function after execution (marshal args per target ABI)" xml:space="preserve">
+    <value>执行后调用目标函数 (按目标 ABI 封送参数)</value>
+  </data>
+  <data name="Call target (symbol name or hex address):" xml:space="preserve">
+    <value>调用目标 (符号名或十六进制地址):</value>
+  </data>
+  <data name="Args (decimal / 0xhex / symbol):" xml:space="preserve">
+    <value>参数 (十进制 / 0x十六进制 / 符号名):</value>
+  </data>
+  <data name="Timeout (ms):" xml:space="preserve">
+    <value>超时 (毫秒):</value>
+  </data>
+  <data name="Validate + Assemble" xml:space="preserve">
+    <value>验证 + 生成机器码</value>
+  </data>
+  <data name="Execute (send to target)" xml:space="preserve">
+    <value>执行 (发送到目标)</value>
+  </data>
+  <data name="Machine Code Hex" xml:space="preserve">
+    <value>机器码 Hex</value>
+  </data>
+  <data name="Validation Errors" xml:space="preserve">
+    <value>校验错误</value>
+  </data>
+  <data name="Register Results" xml:space="preserve">
+    <value>寄存器结果</value>
+  </data>
+  <data name="AsmStudio — Assemble / Validate / Remote Execute" xml:space="preserve">
+    <value>AsmStudio — 汇编编辑 / 校验 / 远程执行</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>就绪</value>
+  </data>
+  <data name="Not Connected" xml:space="preserve">
+    <value>未连接</value>
+  </data>
+  <data name="AsmStudio ready. Usage:" xml:space="preserve">
+    <value>AsmStudio 就绪。使用步骤:</value>
+  </data>
+  <data name="  1. Start a target (bin\Debug\x64\TargetCpp.exe or TargetSharp.exe)" xml:space="preserve">
+    <value>  1. 启动目标程序（bin\Debug\x64\TargetCpp.exe 或 TargetSharp.exe）</value>
+  </data>
+  <data name="  2. Click [Scan Processes], pick a target, then Connect" xml:space="preserve">
+    <value>  2. 点击【扫描进程】并选择目标 → 连接</value>
+  </data>
+  <data name="  3. Edit assembly → Validate → Execute / call target function" xml:space="preserve">
+    <value>  3. 编辑汇编 → 验证 → 执行 / 调用目标函数</value>
+  </data>
+  <data name="  4. [Schemes] menu loads Resources\Scheme\*.asmscheme and runs them" xml:space="preserve">
+    <value>  4. 【方案】菜单可加载 Resources\Scheme\*.asmscheme 顺序执行</value>
+  </data>
+  <data name="Tip: in-process mode needs AsmLibrary.dll next to the main exe." xml:space="preserve">
+    <value>提示: 本进程模式需要把 AsmLibrary.dll 放到主程序目录。</value>
+  </data>
+  <data name="; Intel syntax example: call target GameAddScore(5)" xml:space="preserve">
+    <value>; Intel 语法示例: 调用目标的 GameAddScore(5)</value>
+  </data>
+  <data name="; For remote execution use the mov+call indirection template (cross-process safe):" xml:space="preserve">
+    <value>; 远程执行时请用 mov+call 间接模板（跨进程安全）:</value>
+  </data>
+  <data name="mov rax, GameAddScore   ; symbol injected by the main app" xml:space="preserve">
+    <value>mov rax, GameAddScore   ; 符号由主程序注入</value>
+  </data>
+  <data name="mov rcx, 5              ; x64 first argument -&gt; rcx" xml:space="preserve">
+    <value>mov rcx, 5              ; x64 第一参数 → rcx</value>
+  </data>
+  <data name="Scan finished: " xml:space="preserve">
+    <value>扫描完成: </value>
+  </data>
+  <data name=" processes" xml:space="preserve">
+    <value> 个进程</value>
+  </data>
+  <data name="[+] Connected " xml:space="preserve">
+    <value>[+] 已连接 </value>
+  </data>
+  <data name="Connected: in-process (VEH sandbox)" xml:space="preserve">
+    <value>已连接: 本进程 (VEH 沙箱)</value>
+  </data>
+  <data name="Connected: {0} pid={1} {2} [{3}]" xml:space="preserve">
+    <value>已连接: {0} pid={1} {2} [{3}]</value>
+  </data>
+  <data name="[-] Disconnected" xml:space="preserve">
+    <value>[-] 已断开</value>
+  </data>
+  <data name="[+] Symbol table refreshed: " xml:space="preserve">
+    <value>[+] 符号表已刷新: </value>
+  </data>
+  <data name="Please connect to a target first." xml:space="preserve">
+    <value>请先连接目标。</value>
+  </data>
+  <data name="Please scan and select a target process first." xml:space="preserve">
+    <value>请先扫描并选择目标进程。</value>
+  </data>
+  <data name="(remote thread has no VEH protection; bad code may crash the target)" xml:space="preserve">
+    <value>(远程线程无 VEH 保护，坏代码可能使目标崩溃)</value>
+  </data>
+  <data name="Info" xml:space="preserve">
+    <value>提示</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>确认</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>错误</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="Validation passed" xml:space="preserve">
+    <value>校验通过</value>
+  </data>
+  <data name=" errors" xml:space="preserve">
+    <value> 个错误</value>
+  </data>
+  <data name="Row " xml:space="preserve">
+    <value>行 </value>
+  </data>
+  <data name=", Col " xml:space="preserve">
+    <value>, 列 </value>
+  </data>
+  <data name="Assembly failed: " xml:space="preserve">
+    <value>汇编失败: </value>
+  </data>
+  <data name="Assembled OK: " xml:space="preserve">
+    <value>汇编成功: </value>
+  </data>
+  <data name="[VEH] caught exception " xml:space="preserve">
+    <value>[VEH] 捕获异常 </value>
+  </data>
+  <data name=" (read)" xml:space="preserve">
+    <value> (读违例)</value>
+  </data>
+  <data name=" (write)" xml:space="preserve">
+    <value> (写违例)</value>
+  </data>
+  <data name=" — target survived" xml:space="preserve">
+    <value> — 目标进程存活</value>
+  </data>
+  <data name="Execute (" xml:space="preserve">
+    <value>执行 (</value>
+  </data>
+  <data name=" bytes, " xml:space="preserve">
+    <value> 字节, </value>
+  </data>
+  <data name="code mode" xml:space="preserve">
+    <value>code 模式</value>
+  </data>
+  <data name="    label " xml:space="preserve">
+    <value>    标签 </value>
+  </data>
+  <data name="    symbols: " xml:space="preserve">
+    <value>    符号 </value>
+  </data>
+  <data name="Module list refreshed: " xml:space="preserve">
+    <value>模块列表已刷新: </value>
+  </data>
+  <data name=" (select a module to list its exports)" xml:space="preserve">
+    <value>（选择模块可查看其导出 API）</value>
+  </data>
+  <data name="Parsing exports of " xml:space="preserve">
+    <value>正在解析 </value>
+  </data>
+  <data name=" exports: " xml:space="preserve">
+    <value> 导出 API: </value>
+  </data>
+  <data name=" (select an API to fill the call target)" xml:space="preserve">
+    <value>（选择 API 即填入调用目标）</value>
+  </data>
+  <data name="Assembly files (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|All files (*.*)|*.*" xml:space="preserve">
+    <value>汇编文件 (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|全部文件 (*.*)|*.*</value>
+  </data>
+  <data name="Assembly files (*.asm)|*.asm|All files (*.*)|*.*" xml:space="preserve">
+    <value>汇编文件 (*.asm)|*.asm|全部文件 (*.*)|*.*</value>
+  </data>
+  <data name="Open Assembly File" xml:space="preserve">
+    <value>打开汇编文件</value>
+  </data>
+  <data name="Failed to read: " xml:space="preserve">
+    <value>读取失败: </value>
+  </data>
+  <data name="Saved: " xml:space="preserve">
+    <value>已保存: </value>
+  </data>
+  <data name="Save failed: " xml:space="preserve">
+    <value>保存失败: </value>
+  </data>
+  <data name="Close document " xml:space="preserve">
+    <value>关闭文档 </value>
+  </data>
+  <data name="Close other " xml:space="preserve">
+    <value>关闭其他 </value>
+  </data>
+  <data name="Close all " xml:space="preserve">
+    <value>关闭全部 </value>
+  </data>
+  <data name="Select the folder containing *.asmscheme scheme files" xml:space="preserve">
+    <value>选择包含 *.asmscheme 方案文件的文件夹</value>
+  </data>
+  <data name="No scheme folder selected." xml:space="preserve">
+    <value>未选择方案目录。</value>
+  </data>
+  <data name="Scanned scheme folder: " xml:space="preserve">
+    <value>扫描方案目录: </value>
+  </data>
+  <data name="Running scheme: " xml:space="preserve">
+    <value>运行方案: </value>
+  </data>
+  <data name="Scheme finished: " xml:space="preserve">
+    <value>方案完成: </value>
+  </data>
+  <data name=" steps OK" xml:space="preserve">
+    <value> 步成功</value>
+  </data>
+  <data name="scheme: " xml:space="preserve">
+    <value>方案: </value>
+  </data>
+  <data name=" steps)" xml:space="preserve">
+    <value> 步)</value>
+  </data>
+  <data name="No scheme files found (Resources\Scheme\*.asmscheme)." xml:space="preserve">
+    <value>未找到方案文件（Resources\Scheme\*.asmscheme）。</value>
+  </data>
+  <data name="Assembler self-test: {0}/{1} vectors passed{2}" xml:space="preserve">
+    <value>汇编引擎自检: {0}/{1} 个向量通过{2}</value>
+  </data>
+  <data name="All passed ✓" xml:space="preserve">
+    <value>全部通过 ✓</value>
+  </data>
+  <data name="Failures present, see log" xml:space="preserve">
+    <value>存在失败项，见日志</value>
+  </data>
+  <data name="Self-Test Result" xml:space="preserve">
+    <value>自检结果</value>
+  </data>
+  <data name="expected: " xml:space="preserve">
+    <value>期望: </value>
+  </data>
+  <data name="actual: " xml:space="preserve">
+    <value>实际: </value>
+  </data>
+  <data name="(none)" xml:space="preserve">
+    <value>(无)</value>
+  </data>
+  <data name="error: " xml:space="preserve">
+    <value>错误: </value>
+  </data>
+  <data name="For development/debugging of your own or authorized processes only." xml:space="preserve">
+    <value>仅用于自有/已授权进程的开发调试与学习。</value>
+  </data>
+  <data name="UI language switched: " xml:space="preserve">
+    <value>界面语言已切换: </value>
+  </data>
+  <data name="Cannot encode instruction " xml:space="preserve">
+    <value>无法编码指令 </value>
+  </data>
+  <data name=" (unknown or unsupported operand form)" xml:space="preserve">
+    <value>（未知或操作数形式不支持）</value>
+  </data>
+  <data name="Cannot encode three-operand instruction " xml:space="preserve">
+    <value>无法编码三操作数指令 </value>
+  </data>
+  <data name="Base/index registers must be 32/64-bit" xml:space="preserve">
+    <value>基址/变址寄存器必须是 32/64 位</value>
+  </data>
+  <data name="unknown error" xml:space="preserve">
+    <value>未知错误</value>
+  </data>
+  <data name="Scheme aborted at step " xml:space="preserve">
+    <value>方案在步骤 </value>
+  </data>
+  <data name=", stopping remaining steps." xml:space="preserve">
+    <value>，中止后续步骤。</value>
+  </data>
+  <data name="RemoteThread mode" xml:space="preserve">
+    <value>远程线程模式</value>
+  </data>
+  <data name="RemoteThread+assembly VEH (no DLL)" xml:space="preserve">
+    <value>远程线程+汇编VEH（无DLL）</value>
+  </data>
+  <data name="In-process mode needs " xml:space="preserve">
+    <value>本进程模式需要 </value>
+  </data>
+  <data name="Assembly VEH caught exception " xml:space="preserve">
+    <value>汇编 VEH 拦截异常 </value>
+  </data>
+  <data name="In-process AsmLibrary not loaded" xml:space="preserve">
+    <value>本进程 AsmLibrary 未加载</value>
+  </data>
+  <data name="In-process mode" xml:space="preserve">
+    <value>本进程模式</value>
+  </data>
+  <data name="In-process execution exception: " xml:space="preserve">
+    <value>本进程执行异常: </value>
+  </data>
+  <data name="Cannot resolve ExitThread from the target export table" xml:space="preserve">
+    <value>无法从目标进程导出表解析 ExitThread</value>
+  </data>
+  <data name="Remote thread timed out (thread still running, not terminated)" xml:space="preserve">
+    <value>远程线程超时（线程仍在运行，未终止）</value>
+  </data>
+  <data name="Select Scheme" xml:space="preserve">
+    <value>选择方案</value>
+  </data>
+  <data name="Scheme files (steps run in order):" xml:space="preserve">
+    <value>方案文件（按顺序执行步骤）:</value>
+  </data>
+  <data name="Step preview:" xml:space="preserve">
+    <value>步骤预览:</value>
+  </data>
+  <data name="&amp;Run" xml:space="preserve">
+    <value>运行(&amp;R)</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="syntax=" xml:space="preserve">
+    <value>语法=</value>
+  </data>
+  <data name="Please select a scheme." xml:space="preserve">
+    <value>请选择一个方案。</value>
+  </data>
+</root>

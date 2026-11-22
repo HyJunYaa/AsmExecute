@@ -1,0 +1,432 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="&amp;File" xml:space="preserve">
+    <value>&amp;File</value>
+  </data>
+  <data name="&amp;New" xml:space="preserve">
+    <value>&amp;New</value>
+  </data>
+  <data name="&amp;Open..." xml:space="preserve">
+    <value>&amp;Open...</value>
+  </data>
+  <data name="&amp;Save" xml:space="preserve">
+    <value>&amp;Save</value>
+  </data>
+  <data name="E&amp;xit" xml:space="preserve">
+    <value>E&amp;xit</value>
+  </data>
+  <data name="&amp;Edit" xml:space="preserve">
+    <value>&amp;Edit</value>
+  </data>
+  <data name="&amp;Undo" xml:space="preserve">
+    <value>&amp;Undo</value>
+  </data>
+  <data name="&amp;Redo" xml:space="preserve">
+    <value>&amp;Redo</value>
+  </data>
+  <data name="&amp;Schemes" xml:space="preserve">
+    <value>&amp;Schemes</value>
+  </data>
+  <data name="&amp;Scan Scheme Folder" xml:space="preserve">
+    <value>&amp;Scan Scheme Folder</value>
+  </data>
+  <data name="&amp;Run Selected Scheme..." xml:space="preserve">
+    <value>&amp;Run Selected Scheme...</value>
+  </data>
+  <data name="&amp;Tools" xml:space="preserve">
+    <value>&amp;Tools</value>
+  </data>
+  <data name="Assembler &amp;Self-Test" xml:space="preserve">
+    <value>Assembler &amp;Self-Test</value>
+  </data>
+  <data name="&amp;Inject AsmLibrary.dll..." xml:space="preserve">
+    <value>&amp;Inject AsmLibrary.dll...</value>
+  </data>
+  <data name="&amp;Language" xml:space="preserve">
+    <value>&amp;Language</value>
+  </data>
+  <data name="&amp;Help" xml:space="preserve">
+    <value>&amp;Help</value>
+  </data>
+  <data name="&amp;About..." xml:space="preserve">
+    <value>&amp;About...</value>
+  </data>
+  <data name="&amp;Close" xml:space="preserve">
+    <value>&amp;Close</value>
+  </data>
+  <data name="&amp;Save This" xml:space="preserve">
+    <value>&amp;Save This</value>
+  </data>
+  <data name="Close &amp;Others" xml:space="preserve">
+    <value>Close &amp;Others</value>
+  </data>
+  <data name="Close &amp;All" xml:space="preserve">
+    <value>Close &amp;All</value>
+  </data>
+  <data name="&amp;Clear Log" xml:space="preserve">
+    <value>&amp;Clear Log</value>
+  </data>
+  <data name="Scan Processes" xml:space="preserve">
+    <value>Scan Processes</value>
+  </data>
+  <data name="RemoteThread+VEH (no DLL)" xml:space="preserve">
+    <value>RemoteThread+VEH (no DLL)</value>
+  </data>
+  <data name="Remote Thread (unprotected)" xml:space="preserve">
+    <value>Remote Thread (unprotected)</value>
+  </data>
+  <data name="In-process (quick test)" xml:space="preserve">
+    <value>In-process (quick test)</value>
+  </data>
+  <data name="Connect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="Disconnect" xml:space="preserve">
+    <value>Disconnect</value>
+  </data>
+  <data name="Refresh Symbols" xml:space="preserve">
+    <value>Refresh Symbols</value>
+  </data>
+  <data name="Syntax Style" xml:space="preserve">
+    <value>Syntax Style</value>
+  </data>
+  <data name="Target Arch" xml:space="preserve">
+    <value>Target Arch</value>
+  </data>
+  <data name="Call Settings" xml:space="preserve">
+    <value>Call Settings</value>
+  </data>
+  <data name="Call target function after execution (marshal args per target ABI)" xml:space="preserve">
+    <value>Call target function after execution (marshal args per target ABI)</value>
+  </data>
+  <data name="Call target (symbol name or hex address):" xml:space="preserve">
+    <value>Call target (symbol name or hex address):</value>
+  </data>
+  <data name="Args (decimal / 0xhex / symbol):" xml:space="preserve">
+    <value>Args (decimal / 0xhex / symbol):</value>
+  </data>
+  <data name="Timeout (ms):" xml:space="preserve">
+    <value>Timeout (ms):</value>
+  </data>
+  <data name="Validate + Assemble" xml:space="preserve">
+    <value>Validate + Assemble</value>
+  </data>
+  <data name="Execute (send to target)" xml:space="preserve">
+    <value>Execute (send to target)</value>
+  </data>
+  <data name="Machine Code Hex" xml:space="preserve">
+    <value>Machine Code Hex</value>
+  </data>
+  <data name="Validation Errors" xml:space="preserve">
+    <value>Validation Errors</value>
+  </data>
+  <data name="Register Results" xml:space="preserve">
+    <value>Register Results</value>
+  </data>
+  <data name="AsmStudio — Assemble / Validate / Remote Execute" xml:space="preserve">
+    <value>AsmStudio — Assemble / Validate / Remote Execute</value>
+  </data>
+  <data name="Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="Not Connected" xml:space="preserve">
+    <value>Not Connected</value>
+  </data>
+  <data name="AsmStudio ready. Usage:" xml:space="preserve">
+    <value>AsmStudio ready. Usage:</value>
+  </data>
+  <data name="  1. Start a target (bin\Debug\x64\TargetCpp.exe or TargetSharp.exe)" xml:space="preserve">
+    <value>  1. Start a target (bin\Debug\x64\TargetCpp.exe or TargetSharp.exe)</value>
+  </data>
+  <data name="  2. Click [Scan Processes], pick a target, then Connect" xml:space="preserve">
+    <value>  2. Click [Scan Processes], pick a target, then Connect</value>
+  </data>
+  <data name="  3. Edit assembly → Validate → Execute / call target function" xml:space="preserve">
+    <value>  3. Edit assembly → Validate → Execute / call target function</value>
+  </data>
+  <data name="  4. [Schemes] menu loads Resources\Scheme\*.asmscheme and runs them" xml:space="preserve">
+    <value>  4. [Schemes] menu loads Resources\Scheme\*.asmscheme and runs them</value>
+  </data>
+  <data name="Tip: in-process mode needs AsmLibrary.dll next to the main exe." xml:space="preserve">
+    <value>Tip: in-process mode needs AsmLibrary.dll next to the main exe.</value>
+  </data>
+  <data name="; Intel syntax example: call target GameAddScore(5)" xml:space="preserve">
+    <value>; Intel syntax example: call target GameAddScore(5)</value>
+  </data>
+  <data name="; For remote execution use the mov+call indirection template (cross-process safe):" xml:space="preserve">
+    <value>; For remote execution use the mov+call indirection template (cross-process safe):</value>
+  </data>
+  <data name="mov rax, GameAddScore   ; symbol injected by the main app" xml:space="preserve">
+    <value>mov rax, GameAddScore   ; symbol injected by the main app</value>
+  </data>
+  <data name="mov rcx, 5              ; x64 first argument -&gt; rcx" xml:space="preserve">
+    <value>mov rcx, 5              ; x64 first argument -&gt; rcx</value>
+  </data>
+  <data name="Scan finished: " xml:space="preserve">
+    <value>Scan finished: </value>
+  </data>
+  <data name=" processes" xml:space="preserve">
+    <value> processes</value>
+  </data>
+  <data name="[+] Connected " xml:space="preserve">
+    <value>[+] Connected </value>
+  </data>
+  <data name="Connected: in-process (VEH sandbox)" xml:space="preserve">
+    <value>Connected: in-process (VEH sandbox)</value>
+  </data>
+  <data name="Connected: {0} pid={1} {2} [{3}]" xml:space="preserve">
+    <value>Connected: {0} pid={1} {2} [{3}]</value>
+  </data>
+  <data name="[-] Disconnected" xml:space="preserve">
+    <value>[-] Disconnected</value>
+  </data>
+  <data name="[+] Symbol table refreshed: " xml:space="preserve">
+    <value>[+] Symbol table refreshed: </value>
+  </data>
+  <data name="Please connect to a target first." xml:space="preserve">
+    <value>Please connect to a target first.</value>
+  </data>
+  <data name="Please scan and select a target process first." xml:space="preserve">
+    <value>Please scan and select a target process first.</value>
+  </data>
+  <data name="(remote thread has no VEH protection; bad code may crash the target)" xml:space="preserve">
+    <value>(remote thread has no VEH protection; bad code may crash the target)</value>
+  </data>
+  <data name="Info" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="Confirm" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="About" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="Validation passed" xml:space="preserve">
+    <value>Validation passed</value>
+  </data>
+  <data name=" errors" xml:space="preserve">
+    <value> errors</value>
+  </data>
+  <data name="Row " xml:space="preserve">
+    <value>Row </value>
+  </data>
+  <data name=", Col " xml:space="preserve">
+    <value>, Col </value>
+  </data>
+  <data name="Assembly failed: " xml:space="preserve">
+    <value>Assembly failed: </value>
+  </data>
+  <data name="Assembled OK: " xml:space="preserve">
+    <value>Assembled OK: </value>
+  </data>
+  <data name="[VEH] caught exception " xml:space="preserve">
+    <value>[VEH] caught exception </value>
+  </data>
+  <data name=" (read)" xml:space="preserve">
+    <value> (read)</value>
+  </data>
+  <data name=" (write)" xml:space="preserve">
+    <value> (write)</value>
+  </data>
+  <data name=" — target survived" xml:space="preserve">
+    <value> — target survived</value>
+  </data>
+  <data name="Execute (" xml:space="preserve">
+    <value>Execute (</value>
+  </data>
+  <data name=" bytes, " xml:space="preserve">
+    <value> bytes, </value>
+  </data>
+  <data name="code mode" xml:space="preserve">
+    <value>code mode</value>
+  </data>
+  <data name="    label " xml:space="preserve">
+    <value>    label </value>
+  </data>
+  <data name="    symbols: " xml:space="preserve">
+    <value>    symbols: </value>
+  </data>
+  <data name="Module list refreshed: " xml:space="preserve">
+    <value>Module list refreshed: </value>
+  </data>
+  <data name=" (select a module to list its exports)" xml:space="preserve">
+    <value> (select a module to list its exports)</value>
+  </data>
+  <data name="Parsing exports of " xml:space="preserve">
+    <value>Parsing exports of </value>
+  </data>
+  <data name=" exports: " xml:space="preserve">
+    <value> exports: </value>
+  </data>
+  <data name=" (select an API to fill the call target)" xml:space="preserve">
+    <value> (select an API to fill the call target)</value>
+  </data>
+  <data name="Assembly files (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|All files (*.*)|*.*" xml:space="preserve">
+    <value>Assembly files (*.asm;*.s;*.txt)|*.asm;*.s;*.txt|All files (*.*)|*.*</value>
+  </data>
+  <data name="Assembly files (*.asm)|*.asm|All files (*.*)|*.*" xml:space="preserve">
+    <value>Assembly files (*.asm)|*.asm|All files (*.*)|*.*</value>
+  </data>
+  <data name="Open Assembly File" xml:space="preserve">
+    <value>Open Assembly File</value>
+  </data>
+  <data name="Failed to read: " xml:space="preserve">
+    <value>Failed to read: </value>
+  </data>
+  <data name="Saved: " xml:space="preserve">
+    <value>Saved: </value>
+  </data>
+  <data name="Save failed: " xml:space="preserve">
+    <value>Save failed: </value>
+  </data>
+  <data name="Close document " xml:space="preserve">
+    <value>Close document </value>
+  </data>
+  <data name="Close other " xml:space="preserve">
+    <value>Close other </value>
+  </data>
+  <data name="Close all " xml:space="preserve">
+    <value>Close all </value>
+  </data>
+  <data name="Select the folder containing *.asmscheme scheme files" xml:space="preserve">
+    <value>Select the folder containing *.asmscheme scheme files</value>
+  </data>
+  <data name="No scheme folder selected." xml:space="preserve">
+    <value>No scheme folder selected.</value>
+  </data>
+  <data name="Scanned scheme folder: " xml:space="preserve">
+    <value>Scanned scheme folder: </value>
+  </data>
+  <data name="Running scheme: " xml:space="preserve">
+    <value>Running scheme: </value>
+  </data>
+  <data name="Scheme finished: " xml:space="preserve">
+    <value>Scheme finished: </value>
+  </data>
+  <data name=" steps OK" xml:space="preserve">
+    <value> steps OK</value>
+  </data>
+  <data name="scheme: " xml:space="preserve">
+    <value>scheme: </value>
+  </data>
+  <data name=" steps)" xml:space="preserve">
+    <value> steps)</value>
+  </data>
+  <data name="No scheme files found (Resources\Scheme\*.asmscheme)." xml:space="preserve">
+    <value>No scheme files found (Resources\Scheme\*.asmscheme).</value>
+  </data>
+  <data name="Assembler self-test: {0}/{1} vectors passed{2}" xml:space="preserve">
+    <value>Assembler self-test: {0}/{1} vectors passed{2}</value>
+  </data>
+  <data name="All passed ✓" xml:space="preserve">
+    <value>All passed ✓</value>
+  </data>
+  <data name="Failures present, see log" xml:space="preserve">
+    <value>Failures present, see log</value>
+  </data>
+  <data name="Self-Test Result" xml:space="preserve">
+    <value>Self-Test Result</value>
+  </data>
+  <data name="expected: " xml:space="preserve">
+    <value>expected: </value>
+  </data>
+  <data name="actual: " xml:space="preserve">
+    <value>actual: </value>
+  </data>
+  <data name="(none)" xml:space="preserve">
+    <value>(none)</value>
+  </data>
+  <data name="error: " xml:space="preserve">
+    <value>error: </value>
+  </data>
+  <data name="For development/debugging of your own or authorized processes only." xml:space="preserve">
+    <value>For development/debugging of your own or authorized processes only.</value>
+  </data>
+  <data name="UI language switched: " xml:space="preserve">
+    <value>UI language switched: </value>
+  </data>
+  <data name="Cannot encode instruction " xml:space="preserve">
+    <value>Cannot encode instruction </value>
+  </data>
+  <data name=" (unknown or unsupported operand form)" xml:space="preserve">
+    <value> (unknown or unsupported operand form)</value>
+  </data>
+  <data name="Cannot encode three-operand instruction " xml:space="preserve">
+    <value>Cannot encode three-operand instruction </value>
+  </data>
+  <data name="Base/index registers must be 32/64-bit" xml:space="preserve">
+    <value>Base/index registers must be 32/64-bit</value>
+  </data>
+  <data name="unknown error" xml:space="preserve">
+    <value>unknown error</value>
+  </data>
+  <data name="Scheme aborted at step " xml:space="preserve">
+    <value>Scheme aborted at step </value>
+  </data>
+  <data name=", stopping remaining steps." xml:space="preserve">
+    <value>, stopping remaining steps.</value>
+  </data>
+  <data name="RemoteThread mode" xml:space="preserve">
+    <value>RemoteThread mode</value>
+  </data>
+  <data name="RemoteThread+assembly VEH (no DLL)" xml:space="preserve">
+    <value>RemoteThread+assembly VEH (no DLL)</value>
+  </data>
+  <data name="In-process mode needs " xml:space="preserve">
+    <value>In-process mode needs </value>
+  </data>
+  <data name="Assembly VEH caught exception " xml:space="preserve">
+    <value>Assembly VEH caught exception </value>
+  </data>
+  <data name="In-process AsmLibrary not loaded" xml:space="preserve">
+    <value>In-process AsmLibrary not loaded</value>
+  </data>
+  <data name="In-process mode" xml:space="preserve">
+    <value>In-process mode</value>
+  </data>
+  <data name="In-process execution exception: " xml:space="preserve">
+    <value>In-process execution exception: </value>
+  </data>
+  <data name="Cannot resolve ExitThread from the target export table" xml:space="preserve">
+    <value>Cannot resolve ExitThread from the target export table</value>
+  </data>
+  <data name="Remote thread timed out (thread still running, not terminated)" xml:space="preserve">
+    <value>Remote thread timed out (thread still running, not terminated)</value>
+  </data>
+  <data name="Select Scheme" xml:space="preserve">
+    <value>Select Scheme</value>
+  </data>
+  <data name="Scheme files (steps run in order):" xml:space="preserve">
+    <value>Scheme files (steps run in order):</value>
+  </data>
+  <data name="Step preview:" xml:space="preserve">
+    <value>Step preview:</value>
+  </data>
+  <data name="&amp;Run" xml:space="preserve">
+    <value>&amp;Run</value>
+  </data>
+  <data name="Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="syntax=" xml:space="preserve">
+    <value>syntax=</value>
+  </data>
+  <data name="Please select a scheme." xml:space="preserve">
+    <value>Please select a scheme.</value>
+  </data>
+</root>

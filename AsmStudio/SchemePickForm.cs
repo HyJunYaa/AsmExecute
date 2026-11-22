@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
+using AsmStudio.Localization;
 using AsmStudio.Schemes;
 
 namespace AsmStudio
@@ -21,7 +22,7 @@ namespace AsmStudio
         public SchemePickForm(List<SchemeFile> schemes)
         {
             _schemes = schemes;
-            Text = "选择方案";
+            Text = "Select Scheme";
             Width = 560;
             Height = 440;
             StartPosition = FormStartPosition.CenterParent;
@@ -30,7 +31,7 @@ namespace AsmStudio
             ShowInTaskbar = false;
 
             Label lbl = new Label();
-            lbl.Text = "方案文件（按顺序执行步骤）:";
+            lbl.Text = "Scheme files (steps run in order):";
             lbl.Location = new System.Drawing.Point(12, 12);
             lbl.AutoSize = true;
 
@@ -40,13 +41,13 @@ namespace AsmStudio
             _list.Font = new Font("Consolas", 9f);
             foreach (SchemeFile s in schemes)
                 _list.Items.Add(s.Name + "  [" + s.Syntax.ToUpperInvariant() + "/" +
-                    s.Arch + "] " + s.Steps.Count + " 步" +
+                    s.Arch + "] " + s.Steps.Count + " steps" +
                     (string.IsNullOrEmpty(s.Description) ? "" : "  — " + s.Description));
             _list.SelectedIndexChanged += ListSelected;
             _list.DoubleClick += delegate { Accept(); };
 
             Label lblDesc = new Label();
-            lblDesc.Text = "步骤预览:";
+            lblDesc.Text = "Step preview:";
             lblDesc.Location = new System.Drawing.Point(12, 282);
             lblDesc.AutoSize = true;
 
@@ -59,13 +60,13 @@ namespace AsmStudio
             _desc.Font = new Font("Consolas", 9f);
 
             _btnOk = new Button();
-            _btnOk.Text = "运行(&R)";
+            _btnOk.Text = "&Run";
             _btnOk.Location = new System.Drawing.Point(360, 370);
             _btnOk.Size = new System.Drawing.Size(84, 28);
             _btnOk.Click += delegate { Accept(); };
 
             _btnCancel = new Button();
-            _btnCancel.Text = "取消";
+            _btnCancel.Text = "Cancel";
             _btnCancel.Location = new System.Drawing.Point(450, 370);
             _btnCancel.Size = new System.Drawing.Size(84, 28);
             _btnCancel.DialogResult = DialogResult.Cancel;
@@ -88,12 +89,12 @@ namespace AsmStudio
             if (idx < 0 || idx >= _schemes.Count) { _desc.Text = ""; return; }
             SchemeFile s = _schemes[idx];
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("语法=" + s.Syntax + "  架构=" + s.Arch);
+            sb.AppendLine("syntax=" + s.Syntax + "  arch=" + s.Arch);
             for (int i = 0; i < s.Steps.Count; i++)
             {
                 SchemeStep st = s.Steps[i];
                 sb.Append(i + 1).Append(". ");
-                sb.Append(string.IsNullOrEmpty(st.Title) ? "(无标题)" : st.Title);
+                sb.Append(string.IsNullOrEmpty(st.Title) ? "(untitled)" : st.Title);
                 sb.Append("  [").Append(st.Mode).Append("]");
                 if (!string.IsNullOrEmpty(st.Call)) sb.Append(" call=").Append(st.Call);
                 if (st.Args != null && st.Args.Length > 0)
@@ -110,7 +111,7 @@ namespace AsmStudio
             int idx = _list.SelectedIndex;
             if (idx < 0 || idx >= _schemes.Count)
             {
-                MessageBox.Show(this, "请选择一个方案。", "提示",
+                MessageBox.Show(this, LanguageService.T("Please select a scheme."), LanguageService.T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }

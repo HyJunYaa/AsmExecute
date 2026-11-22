@@ -200,7 +200,7 @@ namespace AsmStudio.Engine
                     if (!res.Success)
                     {
                         r.Passed = false;
-                        r.Error = res.Errors.Count > 0 ? res.Errors[0].ToString() : "未知错误";
+                        r.Error = res.Errors.Count > 0 ? res.Errors[0].ToString() : "unknown error";
                     }
                     else
                     {
@@ -209,7 +209,7 @@ namespace AsmStudio.Engine
                         r.ExpectedHex = v.ExpectedHex;
                         r.Passed = string.Equals(
                             NormalizeHex(actual), NormalizeHex(v.ExpectedHex), StringComparison.Ordinal);
-                        if (!r.Passed) r.Error = "编码不匹配";
+                        if (!r.Passed) r.Error = "encoding mismatch";
                     }
                 }
                 catch (Exception ex)

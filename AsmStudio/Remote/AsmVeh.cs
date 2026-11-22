@@ -1,10 +1,10 @@
 // AsmVeh.cs - 汇编级 VEH 保护（无 DLL 注入）
-// 原理: 在目标进程分配一页 [VEH handler 机器码][数据块]，经远程线程调
+// 原理: 在目标进程分配一页 [VEH handler 机器码][data块]，经远程线程调
 //       AddVectoredExceptionHandler 注册 handler。用户代码崩溃时 handler
 //       判定是否属于本会话运行（flag==1 且异常码属于崩溃类），是则把线程
 //       上下文 RSP/RIP 重置到恢复桩（abort stub），异常被吞掉，线程干净退出；
 //       否则返回 CONTINUE_SEARCH 交还目标自身异常链。
-// 数据块布局 (64 字节):
+// data块布局 (64 字节):
 //   +0x00 u32 flag        1 = 本会话代码运行中
 //   +0x04 u32 faultCount  拦截次数
 //   +0x08 u32 lastExcCode 最近拦截的异常码
@@ -55,7 +55,7 @@ namespace AsmStudio.Remote
             _proc = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, pid);
             if (_proc == IntPtr.Zero)
             {
-                error = "OpenProcess 失败 (err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
+                error = "OpenProcess FAILED (err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
                 return false;
             }
 
@@ -64,7 +64,7 @@ namespace AsmStudio.Remote
                 // 解析目标进程内 AVEH/RVEH/ExitThread 远程地址：读目标 kernel32 导出表。
                 // kernel32 本体多为转发出口（AVEH→ntdll.RtlAddVectoredExceptionHandler 等），
                 // 解析器追踪一跳转发得到 ntdll 内真实地址。
-                // 不能用"本进程地址 + kernel32 基址差值"推算：主程序与目标架构不同时
+                // 不能用"本进程地址 + kernel32 基址差值"推算：主程序与Target Arch不同时
                 // （x64 主程序 → x86 目标）两边 kernel32 是不同二进制，差值算出的地址
                 // 指向垃圾代码，远程线程一调用目标进程就崩。
                 ulong aveh = RemoteSymbols.ResolveTargetApi(pid, is64,
@@ -75,8 +75,8 @@ namespace AsmStudio.Remote
                     "kernel32.dll", "ExitThread");
                 if (aveh == 0 || _rveh == 0 || _exitThread == 0)
                 {
-                    error = "无法从目标进程 kernel32 导出表解析 AVEH/RVEH/ExitThread" +
-                        "（模块枚举失败或跨位数读取被拒）";
+                    error = "Cannot resolve AVEH/RVEH/ExitThread from the target kernel32 export table" +
+                        " (module enumeration failed or cross-bitness read denied)";
                     return false;
                 }
 
@@ -90,7 +90,7 @@ namespace AsmStudio.Remote
                     NativeInterop.PAGE_EXECUTE_READWRITE);
                 if (_page == IntPtr.Zero)
                 {
-                    error = "VirtualAllocEx 失败（目标可能启用 ACG 动态代码限制）";
+                    error = "VirtualAllocEx failed (target may have ACG dynamic-code restrictions)";
                     return false;
                 }
                 _dataAddr = new IntPtr(_page.ToInt64() + dataOff);
@@ -105,7 +105,7 @@ namespace AsmStudio.Remote
                     !NativeInterop.WriteProcessMemory(_proc, _dataAddr, zero,
                         (UIntPtr)DataSize, out written))
                 {
-                    error = "WriteProcessMemory(handler) 失败";
+                    error = "WriteProcessMemory(handler) FAILED";
                     return false;
                 }
 
@@ -117,7 +117,7 @@ namespace AsmStudio.Remote
                 if (!NativeInterop.WriteProcessMemory(_proc, regEntry, regStub,
                         (UIntPtr)regStub.Length, out written))
                 {
-                    error = "WriteProcessMemory(regStub) 失败";
+                    error = "WriteProcessMemory(regStub) FAILED";
                     return false;
                 }
                 IntPtr thread, tid;
@@ -125,7 +125,7 @@ namespace AsmStudio.Remote
                     regEntry, IntPtr.Zero, 0, out tid);
                 if (thread == IntPtr.Zero)
                 {
-                    error = "CreateRemoteThread(注册VEH) 失败 (err=" +
+                    error = "CreateRemoteThread(register VEH) failed (err=" +
                         System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
                     return false;
                 }
@@ -133,14 +133,14 @@ namespace AsmStudio.Remote
                 {
                     NativeInterop.WaitForSingleObject(thread, 3000);
                     // 桩以 ExitThread(句柄) 收尾，退出码为句柄低 32 位（任意值）；
-                    // 以数据块里的句柄为准（桩已写入 [DATA+0x20]）
+                    // 以data块里的句柄为准（桩已写入 [DATA+0x20]）
                     byte[] hbuf = new byte[8];
                     UIntPtr hread;
                     if (!NativeInterop.ReadProcessMemory(_proc,
                             new IntPtr(_dataAddr.ToInt64() + 0x20), hbuf, (UIntPtr)8, out hread) ||
                         BitConverter.ToUInt64(hbuf, 0) == 0)
                     {
-                        error = "AddVectoredExceptionHandler 注册失败（句柄未写入）";
+                        error = "AddVectoredExceptionHandler failed (handle not written)";
                         return false;
                     }
                 }
@@ -157,7 +157,7 @@ namespace AsmStudio.Remote
             }
         }
 
-        /// <summary>读取数据块；返回是否成功</summary>
+        /// <summary>读取data块；返回是否成功</summary>
         public bool Query(out uint faultCount, out uint excCode, out ulong excAddr, out ulong excRip)
         {
             faultCount = 0; excCode = 0; excAddr = 0; excRip = 0;
@@ -192,7 +192,7 @@ namespace AsmStudio.Remote
         /// <summary>诊断: 最近一次 handler 进入时的 flag 值</summary>
         public uint LastFlagSeen;
 
-        /// <summary>强制清运行标志（超时后调用，避免 handler 长期误吞目标异常）</summary>
+        /// <summary>强制清运行标志（timeout后调用，避免 handler 长期误吞目标异常）</summary>
         public void ForceIdle()
         {
             if (!_installed) return;
@@ -291,7 +291,7 @@ namespace AsmStudio.Remote
                     int target = _labels[kv.Value];
                     int rel = target - (kv.Key + 1);
                     if (rel < -128 || rel > 127)
-                        throw new InvalidOperationException("VEH shellcode rel8 溢出");
+                        throw new InvalidOperationException("VEH shellcode rel8 overflow");
                     B[kv.Key] = (byte)rel;
                 }
                 return B.ToArray();
@@ -300,7 +300,7 @@ namespace AsmStudio.Remote
 
         /* ---- x64 VEH handler ----
          * rcx = EXCEPTION_POINTERS*；只用易变寄存器(rax/rcx/rdx/r9)。
-         * 入口记录 (code, rip, flag, 计数) 到数据块 +0x38/+0x40/+0x4C/+0x48（诊断），再走过滤。
+         * 入口记录 (code, rip, flag, 计数) 到data块 +0x38/+0x40/+0x4C/+0x48（诊断），再走过滤。
          * OURS 路径（与 AsmLibrary veh.c 同款）: 记录 fault → 清 flag →
          *   ctx.Rip = [DATA+0x18]（宿主写入的桩收尾段地址）、ctx.Rsp = [DATA+0x10]-24
          *   （等效"用户码已返回、3 个 push 仍在栈上"）→ EXCEPTION_CONTINUE_EXECUTION。
@@ -344,11 +344,12 @@ namespace AsmStudio.Remote
             return e.Finish();
         }
 
-        /* ---- x86 VEH handler（cdecl，plain ret）----
-         * [esp+4] = EXCEPTION_POINTERS*；只用 eax/ecx/edx，数据经绝对 imm32 访问。
+        /* ---- x86 VEH handler（stdcall, ret 4）----
+         * [esp+4] = EXCEPTION_POINTERS*；只用 eax/ecx/edx，data经绝对 imm32 访问。
          * x86 与 x64 的结构差异（实测确认）:
-         *   EXCEPTION_POINTERS = { ER* +0, CTX* +4 }（x64 是 +0/+8，勿照搬）；
-         *   CONTEXT.Eip=0xB8、Esp=0xC4；handler 返回约定为 cdecl（esp 探针实测 delta=0）。
+         *   EXCEPTION_POINTERS = { ER* +0, CTX* +4 }（+8 是 x64 布局，勿照搬）；
+         *   CONTEXT.Eip=0xB8、Esp=0xC4；handler 返回约定 stdcall ret 4
+         *   （实测：plain ret 会炸调度器，连 SEH 都走不到）。
          * OURS 路径同 x64: 记录后改 ctx（Eip=resumeEip、Esp=savedEsp-12）→ CONTINUE_EXECUTION。 */
         private static byte[] BuildHandlerX86(ulong dataAddr)
         {
@@ -410,8 +411,8 @@ namespace AsmStudio.Remote
 
         /* ---- x86 注册桩: push handler; push 1; call AVEH（stdcall 自清栈），ExitThread 收尾 ----
          * 注意压栈顺序: stdcall 从右向左, arg1=First(1) 必须最后推！
-         * 原版 push 1; push handler 的顺序是反的 → 实际调用 AVEH(First=handler, Handler=1)，
-         * VEH 列表里登记的 handler 指针为 1，真实异常一来调度器 call 1 即崩。 */
+         * 反序会实际调用 AVEH(First=handler, Handler=1)，VEH 列表里登记的
+         * handler 指针为 1，真实异常一来调度器 call 1 即崩。 */
         private static byte[] BuildRegStubX86(ulong aveh, ulong exitThread, ulong handlerAddr, ulong dataAddr)
         {
             Emitter e = new Emitter();

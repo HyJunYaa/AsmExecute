@@ -1,9 +1,9 @@
-// TargetSession.cs - 统一目标会话：四种执行通道的公共门面
-//   PipeDll        目标内 AsmLibrary.dll + 命名管道（VEH 全保护，主模式）
-//   RemoteThreadVeh 远程线程 + 汇编 VEH（无 DLL 注入，handler 由 AsmVeh 远程注册）
+// TargetSession.cs - 统一目标会话：三种执行通道的公共门面
+//   RemoteThreadVeh 远程线程 + 汇编 VEH（无 DLL 注入，handler 由 AsmVeh 远程注册，主模式）
 //   RemoteThread   远程线程直调（兜底，无 VEH）
 //   InProcess      主程序本进程执行（直接 P/Invoke 自身架构的 AsmLibrary）
 using System;
+using AsmStudio.Localization;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
@@ -16,7 +16,6 @@ namespace AsmStudio.Remote
         public List<SymbolInfo> Symbols = new List<SymbolInfo>();
         public string LastError;
 
-        private PipeClient _pipe;
         private AsmVehProtector _veh;   // RemoteThreadVeh 通道的汇编 VEH
 
         // ---- 本进程 AsmLibrary 绑定 ----
@@ -39,13 +38,7 @@ namespace AsmStudio.Remote
             get { return "AsmLibrary.dll"; }   // x86/x64 同名分目录
         }
 
-        /// <summary>ret 重定向网关地址（管道模式有效，0=无）</summary>
-        public ulong GateAddress
-        {
-            get { return _pipe != null ? _pipe.GateAddress : 0; }
-        }
-
-        /// <summary>连接目标</summary>
+        /// <summary>Connect目标</summary>
         public bool Connect(ProcessInfo target, ExecChannel channel)
         {
             Target = target;
@@ -56,34 +49,19 @@ namespace AsmStudio.Remote
             {
                 if (!EnsureLocal())
                 {
-                    LastError = "本进程模式需要 " + LocalDllName +
-                        "（与主程序同目录，或加入 PATH）";
+                    LastError = LanguageService.T("In-process mode needs ") + LocalDllName +
+                        " (same folder as the main exe, or on PATH)";
                     return false;
                 }
                 Symbols.Clear();
                 return true;
             }
 
-            if (channel == ExecChannel.PipeDll)
-            {
-                _pipe = new PipeClient();
-                if (_pipe.Connect(target.Pid, 1500))
-                {
-                    RefreshSymbols();
-                    return true;
-                }
-                _pipe.Dispose();
-                _pipe = null;
-                LastError = "目标未加载 AsmLibrary（管道 asmexec_" + target.Pid + " 不存在）。" +
-                    "可改用远程线程模式，或重新启动目标程序。";
-                return false;
-            }
-
             // RemoteThread / RemoteThreadVeh: 做一次权限探测；VEH 通道还需远程安装汇编 handler
             IntPtr h = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, target.Pid);
             if (h == IntPtr.Zero)
             {
-                LastError = "OpenProcess 失败（权限不足或进程已退出）";
+                LastError = "OpenProcess failed (access denied or process exited)";
                 return false;
             }
             NativeInterop.CloseHandle(h);
@@ -93,7 +71,7 @@ namespace AsmStudio.Remote
                 string vehErr;
                 if (!_veh.Install(target.Pid, target.Is64Bit, out vehErr))
                 {
-                    LastError = "汇编 VEH 安装失败: " + vehErr;
+                    LastError = LanguageService.T("Assembly VEH install failed: ") + vehErr;
                     _veh.Dispose();
                     _veh = null;
                     return false;
@@ -103,46 +81,10 @@ namespace AsmStudio.Remote
             return true;
         }
 
-        /// <summary>探测目标是否有 AsmLibrary 管道</summary>
-        public static bool HasPipe(int pid)
-        {
-            PipeClient probe = new PipeClient();
-            try
-            {
-                return probe.Connect(pid, 400);
-            }
-            finally
-            {
-                probe.Dispose();
-            }
-        }
-
-        public void RefreshSymbols()
-        {
-            if (_pipe != null && _pipe.Connected)
-                Symbols = _pipe.GetSymbols();
-            else
-                Symbols.Clear();
-        }
-
         /// <summary>执行机器码（可选 call 目标）</summary>
         public ExecutionResult Execute(byte[] code, ulong[] args, int nargs,
             ulong callTarget, bool modeCall, int timeoutMs)
         {
-            if (Channel == ExecChannel.PipeDll && _pipe != null)
-            {
-                try
-                {
-                    return _pipe.Execute(code, args, nargs, callTarget, modeCall, timeoutMs);
-                }
-                catch (Exception ex)
-                {
-                    ExecutionResult r = new ExecutionResult();
-                    r.Status = ExecStatus.NoConnection;
-                    r.Message = "管道通信异常: " + ex.Message;
-                    return r;
-                }
-            }
             if (Channel == ExecChannel.RemoteThread || Channel == ExecChannel.RemoteThreadVeh)
             {
                 ExecutionResult r = RemoteThreadExecutor.Execute(Target, code, args, nargs,
@@ -154,11 +96,11 @@ namespace AsmStudio.Remote
             }
             ExecutionResult nr = new ExecutionResult();
             nr.Status = ExecStatus.NoConnection;
-            nr.Message = "未连接";
+            nr.Message = LanguageService.T("Not Connected");
             return nr;
         }
 
-        /// <summary>汇编 VEH 通道：执行后读回数据块，把拦截结果并入执行结果</summary>
+        /// <summary>汇编 VEH 通道：执行后读回data块，把拦截结果并入执行结果</summary>
         private void MergeVehOutcome(ExecutionResult r, int timeoutMs)
         {
             if (r.Status == ExecStatus.Timeout)
@@ -177,7 +119,7 @@ namespace AsmStudio.Remote
                 r.ExcAddr = excAddr;
                 r.ExcRip = excRip;
                 r.ExcWasAccessViolation = excCode == 0xC0000005u || excCode == 0xC0000006u;
-                r.Message = "汇编 VEH 拦截异常 " + r.ExceptionName +
+                r.Message = LanguageService.T("Assembly VEH caught exception ") + r.ExceptionName +
                     " (rip=0x" + excRip.ToString("X") +
                     (excAddr != 0 ? ", addr=0x" + excAddr.ToString("X") : "") + ")";
             }
@@ -190,7 +132,7 @@ namespace AsmStudio.Remote
             return _veh.QueryRecorder(out seenCount, out seenCode, out seenRip);
         }
 
-        /// <summary>诊断: 读回 VEH 数据块原始状态（fault/code/rip/addr + 入口记录仪）</summary>
+        /// <summary>诊断: 读回 VEH data块原始状态（fault/code/rip/addr + 入口记录仪）</summary>
         public string VehDiag()
         {
             if (_veh == null) return "veh=null";
@@ -217,7 +159,7 @@ namespace AsmStudio.Remote
             if (_localExec == null)
             {
                 r.Status = ExecStatus.NoConnection;
-                r.Message = "本进程 AsmLibrary 未加载";
+                r.Message = LanguageService.T("In-process AsmLibrary not loaded");
                 return r;
             }
             int size = Marshal.SizeOf(typeof(AsmHostResultFull));
@@ -232,13 +174,13 @@ namespace AsmStudio.Remote
                 AsmHostResultFull res = (AsmHostResultFull)Marshal.PtrToStructure(
                     mem, typeof(AsmHostResultFull));
                 res.CopyRegs(r);
-                r.Message = "本进程模式";
+                r.Message = LanguageService.T("In-process mode");
                 return r;
             }
             catch (Exception ex)
             {
                 r.Status = ExecStatus.Internal;
-                r.Message = "本进程执行异常: " + ex.Message;
+                r.Message = LanguageService.T("In-process execution exception: ") + ex.Message;
                 return r;
             }
             finally
@@ -319,11 +261,6 @@ namespace AsmStudio.Remote
 
         public void Dispose()
         {
-            if (_pipe != null)
-            {
-                _pipe.Dispose();
-                _pipe = null;
-            }
             if (_veh != null)
             {
                 _veh.Dispose();

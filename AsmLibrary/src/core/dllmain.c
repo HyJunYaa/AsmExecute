@@ -93,6 +93,12 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 {
     (void)inst; (void)reserved;
     if (reason == DLL_PROCESS_ATTACH)
+    {
         DisableThreadLibraryCalls(inst);
+        /* 注入场景（第三方宿主进程）下无人显式调用 API，ATTACH 时自动装上 VEH：
+         * 幂等（Interlocked 防重复），只挂异常过滤器不建线程，loader lock 下安全。
+         * 对自加载场景（TargetCpp 等）同样幂等无害。 */
+        asmhost_veh_install();
+    }
     return TRUE;
 }
