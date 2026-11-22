@@ -1,0 +1,20 @@
+{
+  "name": "冒烟-调用系统导出 kernel32!GetCurrentProcessId",
+  "description": "系统模块导出调用（真实可用的符号来源）。前提：右侧符号面板已载入 kernel32 导出（模块下拉选 kernel32.dll 后载入）。ret=目标进程当前 PID。",
+  "syntax": "intel",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "call 模式按符号调用（ret=PID）",
+      "mode": "call",
+      "call": "GetCurrentProcessId",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "代码内嵌调用，{GetCurrentProcessId} 占位符替换为地址（ret=PID）",
+      "mode": "code",
+      "code": "mov rax, {GetCurrentProcessId}\ncall rax\nret",
+      "timeout_ms": 3000
+    }
+  ]
+}

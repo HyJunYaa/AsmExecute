@@ -1,0 +1,26 @@
+{
+  "name": "冒烟-AT&T 语法 x64",
+  "description": "GAS 风格语法冒烟：算术/栈读写/条件跳转，纯代码，不依赖目标符号",
+  "syntax": "att",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "算术与返回值（ret=0x68AC）",
+      "mode": "code",
+      "code": "movq $0x1234, %rax\naddq $0x5678, %rax\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "栈读写（ret=0x55）",
+      "mode": "code",
+      "code": "subq $16, %rsp\nmovq $0x55, (%rsp)\nmovq (%rsp), %rax\naddq $16, %rsp\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "条件跳转（ret=7）",
+      "mode": "code",
+      "code": "xorl %eax, %eax\nje ok\nmovl $0xdead, %eax\nok:\nmovl $7, %eax\nret",
+      "timeout_ms": 3000
+    }
+  ]
+}

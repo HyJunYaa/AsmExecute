@@ -1,0 +1,32 @@
+{
+  "name": "冒烟-基础 Intel x64",
+  "description": "未知目标基础冒烟：算术/栈读写/条件跳转/数据定义/循环，全部纯代码，不依赖目标符号",
+  "syntax": "intel",
+  "arch": "x64",
+  "steps": [
+    {
+      "title": "算术与返回值（ret=0x68AC）",
+      "mode": "code",
+      "code": "mov rax, 0x1234\nadd rax, 0x5678\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "栈上读写（ret=0x1122334455667788）",
+      "mode": "code",
+      "code": "sub rsp, 16\nmov rax, 0x1122334455667788\nmov [rsp], rax\nmov rcx, [rsp]\nadd rsp, 16\nmov rax, rcx\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "前向跳转（ret=1）",
+      "mode": "code",
+      "code": "xor eax, eax\ncmp eax, 0\njne bad\nmov eax, 1\njmp done\nbad:\nmov eax, 0xdead\ndone:\nret",
+      "timeout_ms": 3000
+    },
+    {
+      "title": "数据定义(NOP)与计数循环（ret=15）",
+      "mode": "code",
+      "code": "db 0x90, 0x90\nmov rcx, 5\nxor eax, eax\nsum:\nadd eax, ecx\nloop sum\nret",
+      "timeout_ms": 3000
+    }
+  ]
+}
