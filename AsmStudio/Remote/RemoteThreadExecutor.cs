@@ -204,7 +204,7 @@ namespace AsmStudio.Remote
 
                 uint wait = NativeInterop.WaitForSingleObject(thread,
                     timeoutMs <= 0 ? NativeInterop.INFINITE : (uint)timeoutMs);
-                if (wait != 0 /* WAIT_OBJECT_0 */)
+                if (wait == NativeInterop.WAIT_TIMEOUT)
                 {
                     /* 超时不代表线程已停：它可能仍在执行页内用户码并会继续取指/写结果槽。
                      * 释放该页 = 让目标线程在自己脚下踩空（AV → 目标进程可能被拖死）。
@@ -212,6 +212,17 @@ namespace AsmStudio.Remote
                     keepPage = true;
                     r.Status = ExecStatus.Timeout;
                     r.Message = LanguageService.T("Remote thread timed out (thread still running; execution page intentionally leaked)");
+                    return r;
+                }
+                if (wait != NativeInterop.WAIT_OBJECT_0)
+                {
+                    /* 等待本身失败（WAIT_FAILED 等）：不是超时，线程状态未知。
+                     * 它可能仍在页内执行，故同样不能撤页（泄漏比撤页安全），
+                     * 但必须报准确原因，否则会被误读成"目标太慢"。 */
+                    keepPage = true;
+                    r.Status = ExecStatus.Internal;
+                    r.Message = "WaitForSingleObject FAILED (wait=0x" + wait.ToString("X") +
+                        ", err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + ")";
                     return r;
                 }
 
@@ -315,13 +326,30 @@ namespace AsmStudio.Remote
                 if (nargs > 1) { s.AddRange(new byte[] { 0x48, 0xBA }); AddQ(s, args[1]); }   // mov rdx
                 if (nargs > 2) { s.AddRange(new byte[] { 0x49, 0xB8 }); AddQ(s, args[2]); }   // mov r8
                 if (nargs > 3) { s.AddRange(new byte[] { 0x49, 0xB9 }); AddQ(s, args[3]); }   // mov r9
+                /* 第 5 个参数起按 MS x64 ABI 放 [rsp+0x20+(i-4)*8]，栈空间必须真的腾出来：
+                 * 旧实现把所有栈参数都写进同一个 [rsp+0x20]（互相覆盖、只传对最后一个），
+                 * 且没做 sub rsp，写的是桩自己/线程初始帧的地盘。
+                 * 另外 MS x64 ABI 要求调用方无条件为前 4 个寄存器参数预留 32 字节影子空间，
+                 * 被调函数可直接写 [rsp+0x8..0x20]；无栈参数时也不能省，否则会踩坏栈帧。
+                 * 分配量取 16 的倍数：此处 rsp 已是 16 对齐，call 点才能满足 ABI。 */
+                int stackArgs = nargs > 4 ? nargs - 4 : 0;
+                int totalStackBytes = ((32 + stackArgs * 8) + 15) & ~15;
+                if (totalStackBytes > 0)
+                {
+                    s.AddRange(new byte[] { 0x48, 0x81, 0xEC }); AddD(s, (uint)totalStackBytes);   // sub rsp, imm32
+                }
                 for (int i = 4; i < nargs; i++)
                 {
-                    s.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(s, args[i]);              // mov rax
-                    s.AddRange(new byte[] { 0x48, 0x89, 0x84, 0x24, 0x20, 0x00, 0x00, 0x00 }); // mov [rsp+20], rax
+                    s.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(s, args[i]);                  // mov rax, arg
+                    s.AddRange(new byte[] { 0x48, 0x89, 0x84, 0x24 });                        // mov [rsp+disp32], rax
+                    AddD(s, (uint)(0x20 + (i - 4) * 8));
                 }
                 s.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(s, callTarget);               // mov rax, target
                 s.Add(0xFF); s.Add(0xD0);                                                 // call rax
+                if (totalStackBytes > 0)
+                {
+                    s.AddRange(new byte[] { 0x48, 0x81, 0xC4 }); AddD(s, (uint)totalStackBytes);   // add rsp, imm32
+                }
             }
             s.AddRange(new byte[] { 0x48, 0x89, 0x07 });         // mov [rdi], rax
             epilogueOff = s.Count;                               // 崩溃恢复点：收尾段起始（flag=0 起）

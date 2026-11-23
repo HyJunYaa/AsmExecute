@@ -154,27 +154,88 @@ namespace AsmStudio.Remote
 
         private static readonly Dictionary<string, ulong> _apiCache =
             new Dictionary<string, ulong>(StringComparer.OrdinalIgnoreCase);
+        /// <summary>键的插入顺序（Dictionary 在 .NET 2.0 下不保证枚举顺序，单独维护 FIFO 队列）</summary>
+        private static readonly Queue<string> _apiCacheOrder = new Queue<string>();
         private static readonly object _apiCacheLock = new object();
+        /// <summary>缓存条目上限（每个进程实例一组；超限按 FIFO 淘汰最旧的一批，避免长会话无界增长）</summary>
+        private const int ApiCacheLimit = 512;
+        /// <summary>单次淘汰条数占比：超过上限时淘汰约 1/4 的最旧条目，避免每次写入都触发淘汰</summary>
+        private const int ApiCacheTrimDivisor = 4;
+
+        /// <summary>清空 API 地址缓存（会话切换/目标重连时调用）。</summary>
+        public static void ClearApiCache()
+        {
+            lock (_apiCacheLock) { _apiCache.Clear(); _apiCacheOrder.Clear(); }
+        }
+
+        /// <summary>
+        /// 进程实例标识：进程创建时间（FILETIME 合并成 u64）。pid 会被系统复用——
+        /// 旧进程退出后同一 pid 可能分配给全新进程（模块基址是另一套 ASLR），
+        /// 只按 pid 缓存会把上一进程的地址喂给新进程。取不到（进程已退出/无权限）返回 0。
+        /// </summary>
+        private static ulong ProcessInstanceStamp(int pid)
+        {
+            IntPtr h = NativeInterop.OpenProcess(
+                NativeInterop.PROCESS_QUERY_INFORMATION, false, pid);
+            if (h == IntPtr.Zero) return 0;
+            try
+            {
+                NativeInterop.FILETIME creation, exit, kernel, user;
+                if (!NativeInterop.GetProcessTimes(h, out creation, out exit, out kernel, out user))
+                    return 0;
+                return ((ulong)creation.dwHighDateTime << 32) | creation.dwLowDateTime;
+            }
+            finally
+            {
+                NativeInterop.CloseHandle(h);
+            }
+        }
 
         /// <summary>
         /// 解析目标进程内某模块导出 API 的远程地址（读目标导出表，追踪一跳转发出口）。
-        /// 与主程序位数无关（x64 主程序可解析 x86 目标）。结果按 pid 缓存
-        /// （kernel32 基址每次开机随机一次，缓存安全）。返回 0 = 解析失败。
+        /// 与主程序位数无关（x64 主程序可解析 x86 目标）。结果按「进程实例 + 模块 + API」
+        /// 缓存（模块基址每次开机随机一次，但 pid 会复用，故键里必须带进程创建时间）。
+        /// 返回 0 = 解析失败。
         /// </summary>
         public static ulong ResolveTargetApi(int pid, bool is64, string moduleName, string apiName)
         {
-            string key = pid + "|" + is64 + "|" + StripDllSuffix(moduleName) + "!" + apiName;
-            lock (_apiCacheLock)
+            // 实例标识取不到时既不读缓存也不写缓存：宁可每次重解析，也不拿旧进程的地址冒险
+            ulong stamp = ProcessInstanceStamp(pid);
+            string key = pid + "|" + stamp.ToString("X16") + "|" + is64 + "|" +
+                StripDllSuffix(moduleName) + "!" + apiName;
+            if (stamp != 0)
             {
-                ulong cached;
-                if (_apiCache.TryGetValue(key, out cached)) return cached;
+                lock (_apiCacheLock)
+                {
+                    ulong cached;
+                    if (_apiCache.TryGetValue(key, out cached)) return cached;
+                }
             }
             ulong addr = ResolveTargetApiSlow(pid, is64, moduleName, apiName);
-            if (addr != 0)
+            if (addr != 0 && stamp != 0)
             {
-                lock (_apiCacheLock) { _apiCache[key] = addr; }
+                lock (_apiCacheLock)
+                {
+                    if (_apiCache.Count >= ApiCacheLimit) TrimApiCache();
+                    if (!_apiCache.ContainsKey(key))
+                    {
+                        _apiCacheOrder.Enqueue(key);
+                    }
+                    _apiCache[key] = addr;
+                }
             }
             return addr;
+        }
+
+        /// <summary>超过上限时按插入顺序淘汰最旧的一批条目（调用方需持有 _apiCacheLock）。</summary>
+        private static void TrimApiCache()
+        {
+            int removeCount = Math.Max(1, ApiCacheLimit / ApiCacheTrimDivisor);
+            while (removeCount > 0 && _apiCacheOrder.Count > 0)
+            {
+                _apiCache.Remove(_apiCacheOrder.Dequeue());
+                removeCount--;
+            }
         }
 
         private static ulong ResolveTargetApiSlow(int pid, bool is64, string moduleName, string apiName)

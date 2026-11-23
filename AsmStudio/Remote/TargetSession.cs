@@ -22,6 +22,8 @@ namespace AsmStudio.Remote
             Target = target;
             Channel = channel;
             LastError = null;
+            // 新目标（pid 可能正是刚退出的旧进程用过的）→ 丢掉上一实例解析出的地址
+            RemoteSymbols.ClearApiCache();
 
             // 做一次权限探测；VEH 通道还需远程安装汇编 handler
             IntPtr h = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, target.Pid);

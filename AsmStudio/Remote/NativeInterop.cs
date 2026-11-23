@@ -25,6 +25,11 @@ namespace AsmStudio.Remote
 
         public const uint INFINITE = 0xFFFFFFFF;
 
+        /* WaitForSingleObject 返回值。旧代码只判 wait != 0，于是 WAIT_FAILED 也走进
+         * "超时、线程仍在跑"分支：既给出错误诊断，又按超时策略泄漏页。 */
+        public const uint WAIT_OBJECT_0 = 0x00000000;
+        public const uint WAIT_TIMEOUT = 0x00000102;
+
         [DllImport("kernel32", SetLastError = true)]
         public static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
 
@@ -55,6 +60,18 @@ namespace AsmStudio.Remote
 
         [DllImport("kernel32", SetLastError = true)]
         public static extern bool GetExitCodeThread(IntPtr h, out uint exitCode);
+
+        // ---- 进程创建时间（唯一标识一个进程实例；pid 会被系统复用）----
+        [StructLayout(LayoutKind.Sequential)]
+        public struct FILETIME
+        {
+            public uint dwLowDateTime;
+            public uint dwHighDateTime;
+        }
+
+        [DllImport("kernel32", SetLastError = true)]
+        public static extern bool GetProcessTimes(IntPtr process, out FILETIME creation,
+            out FILETIME exit, out FILETIME kernel, out FILETIME user);
 
         [DllImport("kernel32", SetLastError = true)]
         public static extern bool IsWow64Process(IntPtr h, out bool isWow64);

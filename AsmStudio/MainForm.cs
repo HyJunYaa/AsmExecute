@@ -1343,10 +1343,15 @@ namespace AsmStudio
             }
             ulong callTarget = ParseCallTarget();
             bool modeCall = chkModeCall.Checked && callTarget != 0;
-            // 等待远程线程的时长：300ms 内完成 → 捕获返回值（快速 API 不受影响）；
-            // 阻塞 API（MessageBoxW/Sleep…）等不满 → 立即交还控制（线程继续跑、
-            // 执行页按泄漏策略保留、无返回值），不再拖 3 秒（用户反馈"执行后有延迟"）
-            const int timeout = 300;
+            /* 等待远程线程的时长：可配置（AsmStudio.ini → [General] ExecuteTimeoutMs，毫秒）。
+             * 原实现硬编码 300ms，与 README/执行器/方案脚本的 3s 默认不一致——同一个操作
+             * 手动执行和跑方案会得到不同结果，慢 API（如 Sleep(500)）会被判成超时。
+             * 默认 3000 与其它通道对齐；想保留"快速交还"手感可调小（如 300）：
+             * 等不满就返回 Timeout（线程继续跑、执行页按泄漏策略保留、无返回值）。
+             * 执行本身在线程池上跑，这个值只决定"多久后拿到结果"，不会冻结界面。 */
+            int timeout = AppConfig.GetInt("General", "ExecuteTimeoutMs", 3000);
+            if (timeout < 0) timeout = 0;                 // 0 = 无限等待（执行器约定）
+            else if (timeout > 600000) timeout = 600000;   // 上限 10 分钟，防误配成永久挂起
 
             Log("======== Execute (" + result.Code.Length + T(" bytes, ") +
                 (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) +

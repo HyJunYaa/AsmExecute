@@ -21,3 +21,6 @@ tools/selftest/*.pdb
 
 # 本地会话数据
 .workbuddy/
+
+# 本地修复日志
+/Documents
