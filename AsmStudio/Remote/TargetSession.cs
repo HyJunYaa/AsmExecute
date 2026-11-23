@@ -59,17 +59,16 @@ namespace AsmStudio.Remote
             return r;
         }
 
-        /// <summary>在目标进程分配缓冲区并写入 UTF-16LE 字符串（含终止符），返回远程地址（0=失败）。
-        /// 调用设置里的引号字符串参数经此传指针；调用方负责用 FreeRemote 释放（超时泄漏除外）。</summary>
-        public ulong AllocUtf16(string s)
+        /// <summary>在目标进程分配缓冲区并写入任意字节，返回远程地址（0=失败）。
+        /// 内存页的文本/数值/十六进制与调用设置的字符串参数都经此落库；
+        /// 调用方负责用 FreeRemote 释放（超时/泄漏策略除外）。</summary>
+        public ulong AllocBytes(byte[] data)
         {
-            if (Target == null) return 0;
-            if (s == null) s = "";
+            if (Target == null || data == null || data.Length == 0) return 0;
             IntPtr proc = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, Target.Pid);
             if (proc == IntPtr.Zero) return 0;
             try
             {
-                byte[] data = System.Text.Encoding.Unicode.GetBytes(s + "\0");
                 IntPtr p = NativeInterop.VirtualAllocEx(proc, IntPtr.Zero, (UIntPtr)data.Length,
                     NativeInterop.MEM_COMMIT | NativeInterop.MEM_RESERVE,
                     NativeInterop.PAGE_READWRITE);
@@ -83,6 +82,15 @@ namespace AsmStudio.Remote
             {
                 NativeInterop.CloseHandle(proc);
             }
+        }
+
+        /// <summary>在目标进程分配缓冲区并写入 UTF-16LE 字符串（含终止符），返回远程地址（0=失败）。
+        /// 调用设置里的引号字符串参数经此传指针；调用方负责用 FreeRemote 释放（超时泄漏除外）。</summary>
+        public ulong AllocUtf16(string s)
+        {
+            if (Target == null) return 0;
+            if (s == null) s = "";
+            return AllocBytes(System.Text.Encoding.Unicode.GetBytes(s + "\0"));
         }
 
         /// <summary>释放目标进程内缓冲区（best effort，失败静默——页可能已被目标持有）。</summary>

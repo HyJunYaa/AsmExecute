@@ -146,7 +146,9 @@ namespace AsmStudio.Engine
         }
         public static bool IsIdentChar(char c)
         {
-            return char.IsLetterOrDigit(c) || c == '_' || c == '.' || c == '$' || c == '@';
+            // '!' 用于 模块!API 形态的外部符号（kernel32.dll!Beep），汇编里经
+            // mov+call 间接调用；不能加 '-'——会吞掉负立即数（mov rax, -5）
+            return char.IsLetterOrDigit(c) || c == '_' || c == '.' || c == '$' || c == '@' || c == '!';
         }
 
         /// <summary>提取行首的标识符（助记符/前缀/标签名）</summary>

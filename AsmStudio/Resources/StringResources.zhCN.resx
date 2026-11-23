@@ -156,6 +156,96 @@
   <data name="Opened: " xml:space="preserve">
     <value>已打开: </value>
   </data>
+  <data name="Memory" xml:space="preserve">
+    <value>内存</value>
+  </data>
+  <data name="Name (symbol):" xml:space="preserve">
+    <value>名称(符号):</value>
+  </data>
+  <data name="Text (UTF-16)" xml:space="preserve">
+    <value>文本 (UTF-16)</value>
+  </data>
+  <data name="Number" xml:space="preserve">
+    <value>数值</value>
+  </data>
+  <data name="Hex bytes" xml:space="preserve">
+    <value>十六进制</value>
+  </data>
+  <data name="Content:" xml:space="preserve">
+    <value>内容:</value>
+  </data>
+  <data name="Allocate" xml:space="preserve">
+    <value>申请内存</value>
+  </data>
+  <data name="Free selected" xml:space="preserve">
+    <value>释放选中</value>
+  </data>
+  <data name="Symbol name already exists: " xml:space="preserve">
+    <value>符号名已存在: </value>
+  </data>
+  <data name="Cannot parse number: " xml:space="preserve">
+    <value>无法解析数值: </value>
+  </data>
+  <data name="Hex bytes must be even-length" xml:space="preserve">
+    <value>十六进制字节串长度必须为偶数</value>
+  </data>
+  <data name="Cannot parse hex bytes: " xml:space="preserve">
+    <value>无法解析十六进制字节: </value>
+  </data>
+  <data name="Failed to allocate memory in target" xml:space="preserve">
+    <value>目标进程内分配内存失败</value>
+  </data>
+  <data name="Memory allocated: " xml:space="preserve">
+    <value>内存已申请: </value>
+  </data>
+  <data name="Memory freed: " xml:space="preserve">
+    <value>内存已释放: </value>
+  </data>
+  <data name="Symbol resolved: " xml:space="preserve">
+    <value>符号已解析: </value>
+  </data>
+  <data name="Memory Alloc" xml:space="preserve">
+    <value>内存申请</value>
+  </data>
+  <data name="Integer" xml:space="preserve">
+    <value>整数</value>
+  </data>
+  <data name="Name (symbol)" xml:space="preserve">
+    <value>局部名称</value>
+  </data>
+  <data name="Data (num / ptr / hex string)" xml:space="preserve">
+    <value>数据(数值/指针/十六进制字符串)</value>
+  </data>
+  <data name="Address" xml:space="preserve">
+    <value>申请地址</value>
+  </data>
+  <data name="; Demo: beep once, then pop a MessageBoxW (needs a connected target)" xml:space="preserve">
+    <value>; 示例：先 Beep 响一声，再弹 MessageBoxW 信息框（需已连接目标）</value>
+  </data>
+  <data name="; module!API symbols (kernel32.dll!Beep) resolve automatically after connect" xml:space="preserve">
+    <value>; 模块!API 符号（kernel32.dll!Beep）连接后会自动解析</value>
+  </data>
+  <data name="; x64 args: 1st-4th -&gt; rcx / rdx / r8 / r9" xml:space="preserve">
+    <value>; x64 参数：第1~4个 → rcx / rdx / r8 / r9</value>
+  </data>
+  <data name="; NOTE: the stub enters user code with rsp%16==8 - do sub rsp,0x28 before calls" xml:space="preserve">
+    <value>; ★ 桩进入用户码时 rsp≡8(mod16)：调用 API 前先 sub rsp,0x28（0x20 影子空间 + 8 对齐）</value>
+  </data>
+  <data name=";    (0x20 shadow space + 8 alignment); add rsp,0x28 back before the final ret" xml:space="preserve">
+    <value>;    全部调用结束后 add rsp,0x28 再 ret</value>
+  </data>
+  <data name="; 1) Beep(750, 300) - beep first" xml:space="preserve">
+    <value>; ① Beep(750, 300) —— 先响一声</value>
+  </data>
+  <data name="; 2) MessageBoxW(0, text, title, 0) - then show a message box" xml:space="preserve">
+    <value>; ② MessageBoxW(0, 文本, 标题, 0) —— 再弹一个信息框</value>
+  </data>
+  <data name=";    allocate the strings on the Memory tab (type=Text, name msgText/msgTitle)," xml:space="preserve">
+    <value>;    字符串先到下方『内存』页申请（类型=文本，名称 msgText/msgTitle），</value>
+  </data>
+  <data name=";    then reference them here by symbol:" xml:space="preserve">
+    <value>;    然后在这里按符号名引用：</value>
+  </data>
   <data name="Machine Code Hex" xml:space="preserve">
     <value>机器码 Hex</value>
   </data>

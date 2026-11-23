@@ -95,9 +95,14 @@ namespace AsmStudio.Remote
                             else { pre.AddRange(new byte[] { 0x81, 0xC4 }); AddD(pre, (uint)bytes); }
                         }
                     }
-                    byte[] codeBuf = new byte[(code != null ? code.Length : 0) + pre.Count + 1];
-                    if (code != null) Array.Copy(code, 0, codeBuf, 0, code.Length);
-                    Array.Copy(pre.ToArray(), 0, codeBuf, code != null ? code.Length : 0, pre.Count);
+                    int codeLen = code != null ? code.Length : 0;
+                    // 用户码尾部的 ret 会提前返回桩、跳过拼接在其后的"后奏"调用
+                    // （编辑器模板自带 ret——实测 call 永不执行、ret 恒为残留值），
+                    // 剥掉尾部 C3 让后奏可达；code 模式（不 call）不受影响
+                    while (codeLen > 0 && code[codeLen - 1] == 0xC3) codeLen--;
+                    byte[] codeBuf = new byte[codeLen + pre.Count + 1];
+                    if (codeLen > 0) Array.Copy(code, 0, codeBuf, 0, codeLen);
+                    Array.Copy(pre.ToArray(), 0, codeBuf, codeLen, pre.Count);
                     codeBuf[codeBuf.Length - 1] = 0xC3;
                     userCode = codeBuf;
                     stubCallTarget = 0;

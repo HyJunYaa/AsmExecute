@@ -70,6 +70,20 @@ namespace AsmStudio
         	this.lstErrors = new System.Windows.Forms.ListBox();
         	this.tabRegs = new System.Windows.Forms.TabPage();
         	this.txtRegs = new System.Windows.Forms.TextBox();
+        	this.tabMem = new System.Windows.Forms.TabPage();
+        	this.lblMemName = new System.Windows.Forms.Label();
+        	this.txtMemName = new System.Windows.Forms.TextBox();
+        	this.rbMemText = new System.Windows.Forms.RadioButton();
+        	this.rbMemQword = new System.Windows.Forms.RadioButton();
+        	this.rbMemHex = new System.Windows.Forms.RadioButton();
+        	this.lblMemValue = new System.Windows.Forms.Label();
+        	this.txtMemValue = new System.Windows.Forms.TextBox();
+        	this.btnMemAlloc = new System.Windows.Forms.Button();
+        	this.btnMemFree = new System.Windows.Forms.Button();
+        	this.lstMem = new System.Windows.Forms.ListView();
+        	this.chName = new System.Windows.Forms.ColumnHeader();
+        	this.chData = new System.Windows.Forms.ColumnHeader();
+        	this.chAddr = new System.Windows.Forms.ColumnHeader();
         	this.splitRight = new System.Windows.Forms.SplitContainer();
         	this.grpSyntax = new System.Windows.Forms.GroupBox();
         	this.rbIntel = new System.Windows.Forms.RadioButton();
@@ -108,6 +122,7 @@ namespace AsmStudio
         	this.tabHex.SuspendLayout();
         	this.tabErrors.SuspendLayout();
         	this.tabRegs.SuspendLayout();
+        	this.tabMem.SuspendLayout();
         	((System.ComponentModel.ISupportInitialize)(this.splitRight)).BeginInit();
         	this.splitRight.Panel1.SuspendLayout();
         	this.splitRight.Panel2.SuspendLayout();
@@ -357,10 +372,6 @@ namespace AsmStudio
         	// 
         	// cboProcess
         	// 
-        	// AutoComplete 必须保持 None：SuggestAppend 的原生补全弹出窗在下拉展开/重建列表时
-        	// 会引发 comctl32 AV 闪退（敲进程名首字母必崩）。手输名称由 MatchProcessIndex 兜底。
-        	this.cboProcess.AutoCompleteMode = System.Windows.Forms.AutoCompleteMode.None;
-        	this.cboProcess.AutoCompleteSource = System.Windows.Forms.AutoCompleteSource.None;
         	this.cboProcess.Name = "cboProcess";
         	this.cboProcess.Size = new System.Drawing.Size(240, 25);
         	this.cboProcess.DropDown += new System.EventHandler(this.CboProcessEnsureScan);
@@ -453,6 +464,7 @@ namespace AsmStudio
         	this.tabControlResults.Controls.Add(this.tabHex);
         	this.tabControlResults.Controls.Add(this.tabErrors);
         	this.tabControlResults.Controls.Add(this.tabRegs);
+        	this.tabControlResults.Controls.Add(this.tabMem);
         	this.tabControlResults.Dock = System.Windows.Forms.DockStyle.Fill;
         	this.tabControlResults.Location = new System.Drawing.Point(0, 0);
         	this.tabControlResults.Name = "tabControlResults";
@@ -529,6 +541,147 @@ namespace AsmStudio
         	this.txtRegs.Size = new System.Drawing.Size(626, 248);
         	this.txtRegs.TabIndex = 0;
         	this.txtRegs.WordWrap = false;
+        	// 
+        	// tabMem
+        	// 
+        	this.tabMem.Controls.Add(this.lblMemName);
+        	this.tabMem.Controls.Add(this.txtMemName);
+        	this.tabMem.Controls.Add(this.rbMemText);
+        	this.tabMem.Controls.Add(this.rbMemQword);
+        	this.tabMem.Controls.Add(this.rbMemHex);
+        	this.tabMem.Controls.Add(this.lblMemValue);
+        	this.tabMem.Controls.Add(this.txtMemValue);
+        	this.tabMem.Controls.Add(this.btnMemAlloc);
+        	this.tabMem.Controls.Add(this.btnMemFree);
+        	this.tabMem.Controls.Add(this.lstMem);
+        	this.tabMem.Location = new System.Drawing.Point(4, 22);
+        	this.tabMem.Name = "tabMem";
+        	this.tabMem.Padding = new System.Windows.Forms.Padding(3);
+        	this.tabMem.Size = new System.Drawing.Size(632, 254);
+        	this.tabMem.TabIndex = 4;
+        	this.tabMem.Text = "Memory Alloc";
+        	this.tabMem.UseVisualStyleBackColor = true;
+        	// 
+        	// lblMemName
+        	// 
+        	this.lblMemName.AutoSize = true;
+        	this.lblMemName.Location = new System.Drawing.Point(11, 15);
+        	this.lblMemName.Name = "lblMemName";
+        	this.lblMemName.Size = new System.Drawing.Size(79, 13);
+        	this.lblMemName.TabIndex = 0;
+        	this.lblMemName.Text = "Name (symbol):";
+        	// 
+        	// txtMemName
+        	// 
+        	this.txtMemName.Font = new System.Drawing.Font("Consolas", 9F);
+        	this.txtMemName.Location = new System.Drawing.Point(95, 9);
+        	this.txtMemName.Name = "txtMemName";
+        	this.txtMemName.Size = new System.Drawing.Size(288, 22);
+        	this.txtMemName.TabIndex = 1;
+        	this.txtMemName.Text = "msgText";
+        	// 
+        	// rbMemText
+        	// 
+        	this.rbMemText.AutoSize = true;
+        	this.rbMemText.Location = new System.Drawing.Point(531, 42);
+        	this.rbMemText.Name = "rbMemText";
+        	this.rbMemText.Size = new System.Drawing.Size(91, 17);
+        	this.rbMemText.TabIndex = 2;
+        	this.rbMemText.Text = "Text (UTF-16)";
+        	this.rbMemText.UseVisualStyleBackColor = true;
+        	// 
+        	// rbMemQword
+        	// 
+        	this.rbMemQword.AutoSize = true;
+        	this.rbMemQword.Checked = true;
+        	this.rbMemQword.Location = new System.Drawing.Point(389, 42);
+        	this.rbMemQword.Name = "rbMemQword";
+        	this.rbMemQword.Size = new System.Drawing.Size(58, 17);
+        	this.rbMemQword.TabIndex = 3;
+        	this.rbMemQword.TabStop = true;
+        	this.rbMemQword.Text = "Integer";
+        	this.rbMemQword.UseVisualStyleBackColor = true;
+        	// 
+        	// rbMemHex
+        	// 
+        	this.rbMemHex.AutoSize = true;
+        	this.rbMemHex.Location = new System.Drawing.Point(453, 42);
+        	this.rbMemHex.Name = "rbMemHex";
+        	this.rbMemHex.Size = new System.Drawing.Size(72, 17);
+        	this.rbMemHex.TabIndex = 4;
+        	this.rbMemHex.Text = "Hex bytes";
+        	this.rbMemHex.UseVisualStyleBackColor = true;
+        	// 
+        	// lblMemValue
+        	// 
+        	this.lblMemValue.AutoSize = true;
+        	this.lblMemValue.Location = new System.Drawing.Point(11, 45);
+        	this.lblMemValue.Name = "lblMemValue";
+        	this.lblMemValue.Size = new System.Drawing.Size(47, 13);
+        	this.lblMemValue.TabIndex = 5;
+        	this.lblMemValue.Text = "Content:";
+        	// 
+        	// txtMemValue
+        	// 
+        	this.txtMemValue.Font = new System.Drawing.Font("Consolas", 9F);
+        	this.txtMemValue.Location = new System.Drawing.Point(95, 41);
+        	this.txtMemValue.Name = "txtMemValue";
+        	this.txtMemValue.Size = new System.Drawing.Size(288, 22);
+        	this.txtMemValue.TabIndex = 6;
+        	this.txtMemValue.Text = "hi";
+        	// 
+        	// btnMemAlloc
+        	// 
+        	this.btnMemAlloc.Location = new System.Drawing.Point(390, 7);
+        	this.btnMemAlloc.Name = "btnMemAlloc";
+        	this.btnMemAlloc.Size = new System.Drawing.Size(115, 28);
+        	this.btnMemAlloc.TabIndex = 7;
+        	this.btnMemAlloc.Text = "Allocate";
+        	this.btnMemAlloc.UseVisualStyleBackColor = true;
+        	this.btnMemAlloc.Click += new System.EventHandler(this.BtnMemAllocClick);
+        	// 
+        	// btnMemFree
+        	// 
+        	this.btnMemFree.Location = new System.Drawing.Point(511, 7);
+        	this.btnMemFree.Name = "btnMemFree";
+        	this.btnMemFree.Size = new System.Drawing.Size(115, 28);
+        	this.btnMemFree.TabIndex = 8;
+        	this.btnMemFree.Text = "Free selected";
+        	this.btnMemFree.UseVisualStyleBackColor = true;
+        	this.btnMemFree.Click += new System.EventHandler(this.BtnMemFreeClick);
+        	// 
+        	// lstMem
+        	// 
+        	this.lstMem.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
+			this.chName,
+			this.chData,
+			this.chAddr});
+        	this.lstMem.Dock = System.Windows.Forms.DockStyle.Bottom;
+        	this.lstMem.Font = new System.Drawing.Font("Consolas", 9F);
+        	this.lstMem.FullRowSelect = true;
+        	this.lstMem.GridLines = true;
+        	this.lstMem.HideSelection = false;
+        	this.lstMem.Location = new System.Drawing.Point(3, 71);
+        	this.lstMem.Name = "lstMem";
+        	this.lstMem.Size = new System.Drawing.Size(626, 180);
+        	this.lstMem.TabIndex = 9;
+        	this.lstMem.UseCompatibleStateImageBehavior = false;
+        	this.lstMem.View = System.Windows.Forms.View.Details;
+        	// 
+        	// chName
+        	// 
+        	this.chName.Text = "Name (symbol)";
+        	this.chName.Width = 150;
+        	// 
+        	// chData
+        	// 
+        	this.chData.Text = "Data (num / ptr / hex string)";
+        	this.chData.Width = 290;
+        	// 
+        	// chAddr
+        	// 
+        	this.chAddr.Text = "Address";
+        	this.chAddr.Width = 180;
         	// 
         	// splitRight
         	// 
@@ -667,6 +820,7 @@ namespace AsmStudio
         	this.txtCallTarget.Name = "txtCallTarget";
         	this.txtCallTarget.Size = new System.Drawing.Size(292, 22);
         	this.txtCallTarget.TabIndex = 2;
+        	this.txtCallTarget.TextChanged += new System.EventHandler(this.TxtCallTargetTextChanged);
         	// 
         	// lblModule
         	// 
@@ -726,7 +880,7 @@ namespace AsmStudio
         	this.txtArgs.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
         	this.txtArgs.Size = new System.Drawing.Size(292, 96);
         	this.txtArgs.TabIndex = 8;
-        	this.txtArgs.Text = "(\"MessageBox\",0,\"Title\",0x0)";
+        	this.txtArgs.Text = "(0,\"MessageBox\",\"Title\",0x0)";
         	this.txtArgs.WordWrap = false;
         	// 
         	// btnAssemble
@@ -810,6 +964,8 @@ namespace AsmStudio
         	this.tabErrors.ResumeLayout(false);
         	this.tabRegs.ResumeLayout(false);
         	this.tabRegs.PerformLayout();
+        	this.tabMem.ResumeLayout(false);
+        	this.tabMem.PerformLayout();
         	this.splitRight.Panel1.ResumeLayout(false);
         	this.splitRight.Panel2.ResumeLayout(false);
         	this.splitRight.Panel2.PerformLayout();
@@ -872,6 +1028,20 @@ namespace AsmStudio
         private System.Windows.Forms.ListBox lstErrors;
         private System.Windows.Forms.TextBox txtLog;
         private System.Windows.Forms.TabPage tabRegs;
+        private System.Windows.Forms.TabPage tabMem;
+        private System.Windows.Forms.Label lblMemName;
+        private System.Windows.Forms.TextBox txtMemName;
+        private System.Windows.Forms.RadioButton rbMemText;
+        private System.Windows.Forms.RadioButton rbMemQword;
+        private System.Windows.Forms.RadioButton rbMemHex;
+        private System.Windows.Forms.Label lblMemValue;
+        private System.Windows.Forms.TextBox txtMemValue;
+        private System.Windows.Forms.Button btnMemAlloc;
+        private System.Windows.Forms.Button btnMemFree;
+        private System.Windows.Forms.ListView lstMem;
+        private System.Windows.Forms.ColumnHeader chName;
+        private System.Windows.Forms.ColumnHeader chData;
+        private System.Windows.Forms.ColumnHeader chAddr;
         private System.Windows.Forms.TextBox txtRegs;
         private System.Windows.Forms.GroupBox grpSyntax;
         private System.Windows.Forms.RadioButton rbIntel;

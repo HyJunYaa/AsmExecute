@@ -70,6 +70,7 @@ namespace AsmStudio
         private readonly Dictionary<object, string> _origTexts =
             new Dictionary<object, string>();   // 控件/菜单项 → 英文原始键
         private string[] _origChannelItems;     // 通道下拉的英文原始项
+        private string[] _memColOrig;           // 内存页 ListView 列头的英文原始键
 
         /// <summary>语言键快照：首次翻译前记录每个控件/菜单项的英文原文。
         /// 切换语言时始终从快照重翻 —— 否则 T(当前文本) 在第二次切换后 miss（键已不是英文）。</summary>
@@ -92,6 +93,10 @@ namespace AsmStudio
                     _origChannelItems[i] = cbo.Items[i] as string;
             }
             SnapshotControls(this);
+            // 内存页 ListView 列头（ColumnHeader 不是 Control，须单独快照）
+            _memColOrig = new string[lstMem.Columns.Count];
+            for (int i = 0; i < lstMem.Columns.Count; i++)
+                _memColOrig[i] = lstMem.Columns[i].Text;
         }
 
         private void SnapshotMenu(ToolStrip strip)
@@ -148,6 +153,10 @@ namespace AsmStudio
                 cbo.SelectedIndex = sel;
             }
             ApplyControls(this);
+            // 内存页 ListView 列头按快照重翻
+            if (_memColOrig != null && _memColOrig.Length == lstMem.Columns.Count)
+                for (int i = 0; i < lstMem.Columns.Count; i++)
+                    lstMem.Columns[i].Text = T(_memColOrig[i]);
             // 未编辑过的默认文档按当前语言重翻模板
             foreach (DocInfo d in _docs)
                 if (d.UntouchedDefault)
@@ -302,11 +311,30 @@ namespace AsmStudio
         private static string GetDefaultTemplate()
         {
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine(T("; Intel syntax example: call target GameAddScore(5)"));
-            sb.AppendLine(T("; For remote execution use the mov+call indirection template (cross-process safe):"));
-            sb.AppendLine(T("mov rax, GameAddScore   ; symbol injected by the main app"));
-            sb.AppendLine(T("mov rcx, 5              ; x64 first argument -> rcx"));
+            sb.AppendLine(T("; Demo: beep once, then pop a MessageBoxW (needs a connected target)"));
+            sb.AppendLine(T("; module!API symbols (kernel32.dll!Beep) resolve automatically after connect"));
+            sb.AppendLine(T("; x64 args: 1st-4th -> rcx / rdx / r8 / r9"));
+            sb.AppendLine(T("; NOTE: the stub enters user code with rsp%16==8 - do sub rsp,0x28 before calls"));
+            sb.AppendLine(T(";    (0x20 shadow space + 8 alignment); add rsp,0x28 back before the final ret"));
+            sb.AppendLine("");
+            sb.AppendLine(T("; 1) Beep(750, 300) - beep first"));
+            sb.AppendLine("sub rsp, 0x28");
+            sb.AppendLine("mov rcx, 750");
+            sb.AppendLine("mov rdx, 300");
+            sb.AppendLine("mov rax, kernel32.dll!Beep");
             sb.AppendLine("call rax");
+            sb.AppendLine("");
+            sb.AppendLine(T("; 2) MessageBoxW(0, text, title, 0) - then show a message box"));
+            sb.AppendLine(T(";    allocate the strings on the Memory tab (type=Text, name msgText/msgTitle),"));
+            sb.AppendLine(T(";    then reference them here by symbol:"));
+            sb.AppendLine("xor ecx, ecx");
+            sb.AppendLine("mov rdx, msgText");
+            sb.AppendLine("mov r8, msgTitle");
+            sb.AppendLine("xor r9d, r9d");
+            sb.AppendLine("mov rax, user32.dll!MessageBoxW");
+            sb.AppendLine("call rax");
+            sb.AppendLine("");
+            sb.AppendLine("add rsp, 0x28");
             sb.AppendLine("ret");
             return sb.ToString();
         }
@@ -842,6 +870,7 @@ namespace AsmStudio
                     if (target.Is64Bit) rbX64.Checked = true;
                     else rbX86.Checked = true;
                 }
+                ValidateCurrent();   // 连接后重校验：清掉未连接时的占位标记，刷新状态栏
             }
             else
             {
@@ -866,6 +895,9 @@ namespace AsmStudio
                 _session.Dispose();
                 _session = null;
             }
+            // 内存页：断开后地址全部失效——清空列表与符号（目标可能已退出，不做远程释放）
+            _memAllocs.Clear();
+            lstMem.Items.Clear();
             cboModule.Items.Clear();
             cboApis.Items.Clear();
         }
@@ -940,10 +972,150 @@ namespace AsmStudio
                 SymbolInfo s = _remoteExports[idx];
                 if (s.Address != 0)
                 {
-                    txtCallTarget.Text = "0x" + s.Address.ToString("X");
+                    // 符号名,十六进制地址 一并填入（逗号分隔，ParseCallTarget 以末尾地址为准）；
+                    // 剥掉 "模块!" 前缀，裸名即可解析（后缀回退）
+                    string name = s.Name;
+                    int bang = name.IndexOf('!');
+                    if (bang >= 0) name = name.Substring(bang + 1);
+                    txtCallTarget.Text = name + ",0x" + s.Address.ToString("X");
                     chkModeCall.Checked = true;
                 }
             }
+        }
+
+        private void TxtCallTargetTextChanged(object sender, EventArgs e)
+        {
+            // 手动输入调用目标 = 明确想调用（与下拉选中自动勾选同一语义）。
+            // 免得忘勾复选框出现"目标/参数都填了却走 code 模式"的困惑（用户实测踩坑）
+            if ((txtCallTarget.Text ?? "").Trim().Length > 0 && !chkModeCall.Checked)
+                chkModeCall.Checked = true;
+        }
+
+        // ================= 内存页：目标进程内申请缓冲区（文本/数值/十六进制） =================
+
+        private sealed class MemAlloc
+        {
+            public string Name;
+            public string Content;   // 数据列显示用（原始输入）
+            public ulong Addr;
+            public int Size;
+        }
+        private readonly List<MemAlloc> _memAllocs = new List<MemAlloc>();
+        private int _memCounter;
+
+        private void BtnMemAllocClick(object sender, EventArgs e)
+        {
+            if (!_sessionConnected || _session == null)
+            {
+                MessageBox.Show(this, T("Please connect to a target first."), T("Info"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            string name = (txtMemName.Text ?? "").Trim();
+            if (name.Length == 0)
+            {
+                _memCounter++;
+                name = "mem" + _memCounter;
+                txtMemName.Text = name;
+            }
+            if (_symbolTable.Contains(name))
+            {
+                MessageBox.Show(this, T("Symbol name already exists: ") + name, T("Error"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            string content = txtMemValue.Text ?? "";
+            byte[] data;
+            string typeDesc;
+            if (rbMemText.Checked)
+            {
+                // 文本 = UTF-16LE + 终止符（W 系 API 直接当指针用）
+                data = System.Text.Encoding.Unicode.GetBytes(content + "\0");
+                typeDesc = "utf16";
+            }
+            else if (rbMemQword.Checked)
+            {
+                long v;
+                string t = content.Trim();
+                bool ok = long.TryParse(t, out v);
+                if (!ok && t.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+                    ok = long.TryParse(t.Substring(2),
+                        System.Globalization.NumberStyles.HexNumber, null, out v);
+                if (!ok)
+                {
+                    MessageBox.Show(this, T("Cannot parse number: ") + t, T("Error"),
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                data = System.BitConverter.GetBytes(v);   // 8 字节小端
+                typeDesc = "qword";
+            }
+            else
+            {
+                // 十六进制字节串：原样按字节落库（"DE AD BE EF" / "DEADBEEF" 均可）
+                string hex = content.Replace(" ", "").Replace(",", "");
+                if (hex.Length == 0 || hex.Length % 2 != 0)
+                {
+                    MessageBox.Show(this, T("Hex bytes must be even-length"), T("Error"),
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                data = new byte[hex.Length / 2];
+                for (int i = 0; i < data.Length; i++)
+                {
+                    if (!byte.TryParse(hex.Substring(i * 2, 2),
+                        System.Globalization.NumberStyles.HexNumber, null, out data[i]))
+                    {
+                        MessageBox.Show(this, T("Cannot parse hex bytes: ") + content, T("Error"),
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+                }
+                typeDesc = "hex";
+            }
+
+            ulong addr = _session.AllocBytes(data);
+            if (addr == 0)
+            {
+                MessageBox.Show(this, T("Failed to allocate memory in target"), T("Error"),
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            // 地址注册成符号：汇编里 mov rdx, msgText / push xxx 直接引用
+            _symbolTable.Add(name, addr);
+            _session.Symbols.Add(new SymbolInfo { Name = name, Address = addr });
+            MemAlloc a = new MemAlloc();
+            a.Name = name;
+            a.Content = content;
+            a.Addr = addr;
+            a.Size = data.Length;
+            _memAllocs.Add(a);
+            ListViewItem row = new ListViewItem(name);
+            row.SubItems.Add(content);
+            row.SubItems.Add("0x" + addr.ToString("X"));
+            lstMem.Items.Add(row);
+            Log("[+] " + T("Memory allocated: ") + name + " = 0x" + addr.ToString("X") +
+                " (" + data.Length + " bytes)");
+            ValidateCurrent();   // 新符号入表 → 刷新编辑器错误标记（msgText 等不再标红）
+        }
+
+        private void BtnMemFreeClick(object sender, EventArgs e)
+        {
+            if (lstMem.SelectedIndices.Count == 0) return;
+            int idx = lstMem.SelectedIndices[0];
+            if (idx < 0 || idx >= _memAllocs.Count) return;
+            MemAlloc a = _memAllocs[idx];
+            if (_session != null) _session.FreeRemote(a.Addr);
+            _symbolTable.Remove(a.Name);
+            if (_session != null && _session.Symbols != null)
+                _session.Symbols.RemoveAll(delegate(SymbolInfo s)
+                {
+                    return string.Equals(s.Name, a.Name, StringComparison.OrdinalIgnoreCase);
+                });
+            _memAllocs.RemoveAt(idx);
+            lstMem.Items.RemoveAt(idx);
+            Log("[+] " + T("Memory freed: ") + a.Name + " (0x" + a.Addr.ToString("X") + ")");
         }
 
         // ================= 语法 / 架构 =================
@@ -1001,14 +1173,60 @@ namespace AsmStudio
         {
             DocInfo doc = CurrentDoc;
             if (doc == null) return;
+            ResolveModuleApiSymbols(doc.Editor.Text);
             List<AsmError> errors = AsmEngine.Validate(
-                doc.Editor.Text, CurrentSyntax, CurrentArch, _symbolTable);
+                doc.Editor.Text, CurrentSyntax, CurrentArch, BuildValidationTable(doc.Editor.Text));
             doc.Editor.SetErrorLines(GetErrorLines(errors));
             lstErrors.Items.Clear();
             foreach (AsmError err in errors)
                 lstErrors.Items.Add(err.ToString());
             lblStatus.Text = T("Row ") + doc.Editor.CaretLine + T(", Col ") + doc.Editor.CaretColumn +
                 "  |  " + (errors.Count == 0 ? T("Validation passed") : (errors.Count + T(" errors")));
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex _moduleApiRefRegex =
+            new System.Text.RegularExpressions.Regex(
+                @"(?i)\b([a-z0-9_][a-z0-9_.\-]*![a-z_][a-z0-9_]*)");
+
+        /// <summary>扫描源码里的 模块!API 外部符号引用（去重、统一小写）。</summary>
+        private static List<string> CollectModuleApiRefs(string source)
+        {
+            var list = new List<string>();
+            if (source == null) return list;
+            foreach (System.Text.RegularExpressions.Match m in _moduleApiRefRegex.Matches(source))
+            {
+                string sym = m.Groups[1].Value.ToLowerInvariant();
+                if (!list.Contains(sym)) list.Add(sym);
+            }
+            return list;
+        }
+
+        /// <summary>汇编/校验前把源码里的 模块!API 符号按需解析进符号表（读目标导出表，
+        /// 需已连接；结果符号表缓存 + RemoteSymbols 内部缓存，重复校验零开销）。</summary>
+        private void ResolveModuleApiSymbols(string source)
+        {
+            if (_session == null || !_sessionConnected) return;
+            foreach (string sym in CollectModuleApiRefs(source))
+            {
+                ulong addr;
+                if (_symbolTable.Contains(sym)) continue;
+                if (TryResolveTargetSymbol(sym, out addr))
+                    Log("[+] " + T("Symbol resolved: ") + sym + " = 0x" + addr.ToString("X"));
+            }
+        }
+
+        /// <summary>校验专用符号表：真实符号 + 未连接时给 模块!API 占位值 1。
+        /// 校验只查语法/结构——真实地址在连接后的汇编/执行阶段按需解析，
+        /// 避免默认示例未连接时一直显示校验错误（地址不回填，生成机器码仍是真实汇编）。</summary>
+        private SymbolTable BuildValidationTable(string source)
+        {
+            SymbolTable t = new SymbolTable();
+            foreach (KeyValuePair<string, ulong> kv in _symbolTable.Items)
+                t.Add(kv.Key, kv.Value);
+            if (_session == null || !_sessionConnected)
+                foreach (string sym in CollectModuleApiRefs(source))
+                    if (!t.Contains(sym)) t.Add(sym, 1);
+            return t;
         }
 
         private static List<int> GetErrorLines(List<AsmError> errors)
@@ -1056,6 +1274,7 @@ namespace AsmStudio
         {
             DocInfo doc = CurrentDoc;
             if (doc == null) return;
+            ResolveModuleApiSymbols(doc.Editor.Text);
             AssembleOptions opt = new AssembleOptions();
             opt.Syntax = CurrentSyntax;
             opt.Arch = CurrentArch;
@@ -1093,6 +1312,7 @@ namespace AsmStudio
                 return;
             }
 
+            ResolveModuleApiSymbols(doc.Editor.Text);
             AssembleOptions opt = new AssembleOptions();
             opt.Syntax = CurrentSyntax;
             opt.Arch = CurrentArch;
@@ -1123,7 +1343,10 @@ namespace AsmStudio
             }
             ulong callTarget = ParseCallTarget();
             bool modeCall = chkModeCall.Checked && callTarget != 0;
-            const int timeout = 3000;   // 超时输入框已移除（UI 精简）：固定 3s，超时按泄漏策略兜底
+            // 等待远程线程的时长：300ms 内完成 → 捕获返回值（快速 API 不受影响）；
+            // 阻塞 API（MessageBoxW/Sleep…）等不满 → 立即交还控制（线程继续跑、
+            // 执行页按泄漏策略保留、无返回值），不再拖 3 秒（用户反馈"执行后有延迟"）
+            const int timeout = 300;
 
             Log("======== Execute (" + result.Code.Length + T(" bytes, ") +
                 (modeCall ? "call=" + txtCallTarget.Text : T("code mode")) +
@@ -1246,7 +1469,7 @@ namespace AsmStudio
             if (r.Status == ExecStatus.Ok)
             {
                 // 快照由桩在"用户码执行后、call target 前"写入；异常/超时路径没有这份现场
-                sb.AppendLine("== After user code executed (pre-call) ==");
+                sb.AppendLine("== After user code executed ==");
                 sb.AppendLine("   (rbx/rcx/rdi = tool internals here: data block / VEH block / result slot)");
                 AppendRegs(sb, "regs_mid", r.RegsMid);
                 sb.AppendLine();
@@ -1410,7 +1633,7 @@ namespace AsmStudio
                     continue;
                 }
                 ulong v;
-                if (!TryResolveSymbol(val, out v))
+                if (!TryResolveTargetSymbol(val, out v))
                 {
                     bool hex = val.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
                     bool ok = hex
@@ -1427,12 +1650,50 @@ namespace AsmStudio
             return true;
         }
 
+        /// <summary>目标符号解析（调用目标/参数共用）：
+        /// ①已载入符号表精确/后缀匹配；②带 "模块!API" 的名称按需远程解析目标导出表
+        /// （未浏览模块也能直填 user32.dll!MessageBoxW），成功后回写符号表/会话符号表复用。</summary>
+        private bool TryResolveTargetSymbol(string name, out ulong addr)
+        {
+            if (TryResolveSymbol(name, out addr)) return true;
+            int bang = name == null ? -1 : name.IndexOf('!');
+            if (bang <= 0 || bang == name.Length - 1) return false;
+            string module = name.Substring(0, bang).Trim();
+            string api = name.Substring(bang + 1).Trim();
+            if (module.Length == 0 || api.Length == 0 || api.IndexOf(' ') >= 0) return false;
+            TargetSession sess = _session;
+            if (sess == null || sess.Target == null) return false;
+            addr = RemoteSymbols.ResolveTargetApi(sess.Target.Pid, sess.Target.Is64Bit, module, api);
+            if (addr == 0) return false;
+            string key = module.ToLowerInvariant() + "!" + api;
+            _symbolTable.Add(key, addr);
+            sess.Symbols.Add(new SymbolInfo { Name = key, Address = addr });
+            return true;
+        }
+
         private ulong ParseCallTarget()
         {
             string s = (txtCallTarget.Text ?? "").Trim();
             if (s.Length == 0) return 0;
             ulong v;
-            if (TryResolveSymbol(s, out v)) return v;
+            // 组合形式 "符号名,0x地址"（API 下拉自动填入；空格分隔也兼容）：
+            // 以末尾十六进制地址为准，符号名作对照——微调地址改数字即可，删掉地址只留符号名也行；
+            // 不选模块/API 时也可手填 "模块!API"（如 user32.dll!MessageBoxW，按需远程解析）
+            int comma = s.LastIndexOf(',');
+            if (comma > 0)
+            {
+                string tail = s.Substring(comma + 1).Trim();
+                if (tail.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+                    ulong.TryParse(tail.Substring(2),
+                        System.Globalization.NumberStyles.HexNumber, null, out v))
+                    return v;
+            }
+            int hx = s.LastIndexOf(" 0x", StringComparison.OrdinalIgnoreCase);
+            if (hx > 0 &&
+                ulong.TryParse(s.Substring(hx + 3).Trim(),
+                    System.Globalization.NumberStyles.HexNumber, null, out v))
+                return v;
+            if (TryResolveTargetSymbol(s, out v)) return v;
             bool hex = s.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
             bool ok = hex
                 ? ulong.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out v)
