@@ -1,6 +1,7 @@
 // NativeInterop.cs - kernel32 P/Invoke（仅 WinXP/Vista 级 API，兼容 Win7+）
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace AsmStudio.Remote
 {
@@ -12,6 +13,7 @@ namespace AsmStudio.Remote
         public const uint PROCESS_VM_READ = 0x0010;
         public const uint PROCESS_VM_WRITE = 0x0020;
         public const uint PROCESS_QUERY_INFORMATION = 0x0400;
+        public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;   // Vista+：受限也能查基本信息的只读权限
         public const uint PROCESS_ALL_NEEDED =
             PROCESS_TERMINATE | PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION |
             PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_QUERY_INFORMATION;
@@ -164,5 +166,100 @@ namespace AsmStudio.Remote
             }
             return IntPtr.Zero;
         }
+
+        // ================= 窗口拾取（拖拽取进程用） =================
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT
+        {
+            public int X;
+            public int Y;
+            public POINT(int x, int y) { X = x; Y = y; }
+        }
+
+        public const uint GA_ROOT = 2;              // GetAncestor: 取顶层（桌面子窗口 → 真窗口）
+
+        [DllImport("user32", SetLastError = true)]
+        public static extern IntPtr WindowFromPoint(POINT pt);
+
+        [DllImport("user32")]
+        public static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+
+        [DllImport("user32", SetLastError = true)]
+        public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+
+        [DllImport("user32", CharSet = CharSet.Unicode)]
+        public static extern int GetClassNameW(IntPtr hwnd, StringBuilder sb, int maxCount);
+
+        [DllImport("user32", CharSet = CharSet.Unicode)]
+        public static extern int GetWindowTextW(IntPtr hwnd, StringBuilder sb, int maxCount);
+
+        /* 抓鼠标：捕获期间所有鼠标消息都路由到捕获窗口，因此光标也由它决定——
+         * 这正是拖拽时能显示自定义准星（而不是被目标窗口覆盖成箭头）的原因。 */
+        [DllImport("user32", SetLastError = true)]
+        public static extern IntPtr SetCapture(IntPtr hwnd);
+
+        [DllImport("user32", SetLastError = true)]
+        public static extern bool ReleaseCapture();
+
+        [DllImport("user32")]
+        public static extern IntPtr SetCursor(IntPtr hCursor);
+
+        [DllImport("user32", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern IntPtr LoadCursorFromFileW(string fileName);
+
+        /* ---- 光标：内存自造 ----
+         * LoadCursorFromFile 必须先落盘，而落盘/读盘在提权、杀软、%TEMP% 被重定向
+         * 等情况下都可能失败，失败就静默回退成系统十字 → 两边看到的"图"不一样。
+         * 这里改成直接拿 .cur 的 DIB 在内存里合成（CreateDIBSection + CreateIconIndirect），
+         * 不碰文件系统，任何权限下产物逐字节相同。 */
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IconInfo
+        {
+            public int fIcon;
+            public int xHotspot;
+            public int yHotspot;
+            public IntPtr hbmMask;
+            public IntPtr hbmColor;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BitmapInfoHeader
+        {
+            public uint biSize;
+            public int biWidth;
+            public int biHeight;
+            public ushort biPlanes;
+            public ushort biBitCount;
+            public uint biCompression;
+            public uint biSizeImage;
+            public int biXPelsPerMeter;
+            public int biYPelsPerMeter;
+            public uint biClrUsed;
+            public uint biClrImportant;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BitmapInfo
+        {
+            public BitmapInfoHeader bmiHeader;
+            public uint bmiColors0;
+            public uint bmiColors1;
+            public uint bmiColors2;
+        }
+
+        [DllImport("user32", SetLastError = true)]
+        public static extern IntPtr CreateIconIndirect(ref IconInfo iconInfo);
+
+        [DllImport("gdi32", SetLastError = true)]
+        public static extern IntPtr CreateDIBSection(IntPtr hdc, ref BitmapInfo bmi, uint usage,
+            out IntPtr bits, IntPtr hSection, uint offset);
+
+        [DllImport("gdi32", SetLastError = true)]
+        public static extern IntPtr CreateBitmap(int width, int height, uint planes, uint bitCount, byte[] data);
+
+        [DllImport("gdi32")]
+        public static extern bool DeleteObject(IntPtr obj);
     }
 }

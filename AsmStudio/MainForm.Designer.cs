@@ -54,6 +54,7 @@ namespace AsmStudio
         	this.lblMode = new System.Windows.Forms.ToolStripStatusLabel();
         	this.toolbar = new System.Windows.Forms.ToolStrip();
         	this.btnScan = new System.Windows.Forms.ToolStripButton();
+        	this.btnPickProcess = new System.Windows.Forms.ToolStripButton();
         	this.cboProcess = new System.Windows.Forms.ToolStripComboBox();
         	this.lblTargetArch = new System.Windows.Forms.ToolStripLabel();
         	this.cboChannel = new System.Windows.Forms.ToolStripComboBox();
@@ -351,6 +352,7 @@ namespace AsmStudio
         	this.toolbar.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
         	this.toolbar.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
 			this.btnScan,
+			this.btnPickProcess,
 			this.cboProcess,
 			this.lblTargetArch,
 			this.cboChannel,
@@ -370,10 +372,26 @@ namespace AsmStudio
         	this.btnScan.Text = "Scan Processes";
         	this.btnScan.Click += new System.EventHandler(this.BtnScanClick);
         	// 
+        	// btnPickProcess
+        	// 
+        	this.btnPickProcess.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.ImageAndText;
+        	this.btnPickProcess.Name = "btnPickProcess";
+        	this.btnPickProcess.Size = new System.Drawing.Size(100, 22);
+        	this.btnPickProcess.Text = "Drag to Pick";
+        	this.btnPickProcess.ToolTipText = "Drag onto the target window, release the left button to select its process (Esc cancels)";
+        	// 按住即开始捕获（Click 要等左键抬起才触发，做不了拖拽手势）
+        	this.btnPickProcess.MouseDown += new System.Windows.Forms.MouseEventHandler(this.BtnPickProcessMouseDown);
+        	this.btnPickProcess.Click += new System.EventHandler(this.BtnPickProcessClick);
+        	// 
         	// cboProcess
         	// 
         	this.cboProcess.Name = "cboProcess";
         	this.cboProcess.Size = new System.Drawing.Size(240, 25);
+        	// 只能从列表里挑，不允许手输：手输的名称要靠 MatchProcessIndex 做模糊匹配，
+        	// 名字相近的进程容易连错；取进程已有「扫描」和「拖动取进程」两条正路
+        	this.cboProcess.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+        	// 列表项比输入框长（带 pid 和位数），展开时给更宽的宽度，免得被截断看不全
+        	this.cboProcess.DropDownWidth = 380;
         	this.cboProcess.DropDown += new System.EventHandler(this.CboProcessEnsureScan);
         	this.cboProcess.Click += new System.EventHandler(this.CboProcessEnsureScan);
         	this.cboProcess.TextChanged += new System.EventHandler(this.CboProcessEnsureScan);
@@ -1011,6 +1029,7 @@ namespace AsmStudio
         private System.Windows.Forms.ToolStripStatusLabel lblMode;
         private System.Windows.Forms.ToolStrip toolbar;
         private System.Windows.Forms.ToolStripButton btnScan;
+        private System.Windows.Forms.ToolStripButton btnPickProcess;
         private System.Windows.Forms.ToolStripComboBox cboProcess;
         private System.Windows.Forms.ToolStripLabel lblTargetArch;
         private System.Windows.Forms.ToolStripComboBox cboChannel;

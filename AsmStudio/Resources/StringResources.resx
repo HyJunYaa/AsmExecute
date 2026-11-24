@@ -273,18 +273,6 @@
   <data name="  2. Click [Scan Processes], pick a target, then Connect" xml:space="preserve">
     <value>  2. Click [Scan Processes], pick a target, then Connect</value>
   </data>
-  <data name="&amp;Close" xml:space="preserve">
-    <value>&amp;Close</value>
-  </data>
-  <data name="&amp;Save This" xml:space="preserve">
-    <value>&amp;Save This</value>
-  </data>
-  <data name="Close &amp;Others" xml:space="preserve">
-    <value>Close &amp;Others</value>
-  </data>
-  <data name="Close &amp;All" xml:space="preserve">
-    <value>Close &amp;All</value>
-  </data>
   <data name="&amp;Clear Log" xml:space="preserve">
     <value>&amp;Clear Log</value>
   </data>
@@ -563,5 +551,62 @@
   </data>
   <data name="Please select a scheme." xml:space="preserve">
     <value>Please select a scheme.</value>
+  </data>
+  <data name="Drag to Pick" xml:space="preserve">
+    <value>Drag to Pick</value>
+  </data>
+  <data name="Hold the left button, drag onto the target window, release to pick (Esc cancels)" xml:space="preserve">
+    <value>Hold the left button, drag onto the target window, release to pick (Esc cancels)</value>
+  </data>
+  <data name="Drag over a window, release to pick  -  Esc / right click cancels" xml:space="preserve">
+    <value>Drag over a window, release to pick  -  Esc / right click cancels</value>
+  </data>
+  <data name="Drag onto the target window, release the left button to select its process (Esc cancels)" xml:space="preserve">
+    <value>Drag onto the target window, release the left button to select its process (Esc cancels)</value>
+  </data>
+  <data name="High/Admin" xml:space="preserve">
+    <value>High/Admin</value>
+  </data>
+  <data name="Medium/Normal" xml:space="preserve">
+    <value>Medium/Normal</value>
+  </data>
+  <data name="Low/Restricted" xml:space="preserve">
+    <value>Low/Restricted</value>
+  </data>
+  <data name="This app runs in a restricted context (Low integrity): the process list will be incomplete and write access to other processes is denied; its parent process cannot be read either, so the cause is unknown" xml:space="preserve">
+    <value>This app runs in a restricted context (Low integrity): the process list will be incomplete and write access to other processes is denied; its parent process cannot be read either, so the cause is unknown</value>
+  </data>
+  <data name="This app runs at Low integrity and its parent {0}(pid={1}) cannot be read; the process list will be incomplete and write access to other processes is denied" xml:space="preserve">
+    <value>This app runs at Low integrity and its parent {0}(pid={1}) cannot be read; the process list will be incomplete and write access to other processes is denied</value>
+  </data>
+  <data name="This app runs at Low integrity, but its parent {0}(pid={1}, {2}) has normal privileges - so AsmStudio.exe itself or its folder carries a Low integrity label and Windows forced the demotion. This has nothing to do with how you launched it (administrator or not, from which folder). Fix: re-run build.bat (it resets bin at the end), or run the local repair tool from the project root, or manually run icacls /setintegritylevel (OI)(CI)M /T on that folder - then restart this app" xml:space="preserve">
+    <value>This app runs at Low integrity, but its parent {0}(pid={1}, {2}) has normal privileges - so AsmStudio.exe itself or its folder carries a Low integrity label and Windows forced the demotion. This has nothing to do with how you launched it (administrator or not, from which folder). Fix: re-run build.bat (it resets bin at the end), or run the local repair tool from the project root, or manually run icacls /setintegritylevel (OI)(CI)M /T on that folder - then restart this app</value>
+  </data>
+  <data name="This app runs at Low integrity and its parent {0}(pid={1}, {2}) is restricted too - the demotion came from upstream in the launch chain (sandbox / restricted launcher). Launch the exe directly from Explorer" xml:space="preserve">
+    <value>This app runs at Low integrity and its parent {0}(pid={1}, {2}) is restricted too - the demotion came from upstream in the launch chain (sandbox / restricted launcher). Launch the exe directly from Explorer</value>
+  </data>
+  <data name="; also this app itself runs at Low integrity (see the [!] line in the log) - every normal process will then deny write access, fix the integrity level first" xml:space="preserve">
+    <value>; also this app itself runs at Low integrity (see the [!] line in the log) - every normal process will then deny write access, fix the integrity level first</value>
+  </data>
+  <data name="; for an elevated target, run this app as administrator" xml:space="preserve">
+    <value>; for an elevated target, run this app as administrator</value>
+  </data>
+  <data name="Access denied - target {0}, this app {1}{2}" xml:space="preserve">
+    <value>Access denied - target {0}, this app {1}{2}</value>
+  </data>
+  <data name="pid no longer exists (process exited or pid reused), please rescan" xml:space="preserve">
+    <value>pid no longer exists (process exited or pid reused), please rescan</value>
+  </data>
+  <data name="invalid system handle (the target may have just exited)" xml:space="preserve">
+    <value>invalid system handle (the target may have just exited)</value>
+  </data>
+  <data name="win32={0}, target {1}, this app {2}" xml:space="preserve">
+    <value>win32={0}, target {1}, this app {2}</value>
+  </data>
+  <data name="OpenProcess failed: " xml:space="preserve">
+    <value>OpenProcess failed: </value>
+  </data>
+  <data name="Assembly VEH install failed: " xml:space="preserve">
+    <value>Assembly VEH install failed: </value>
   </data>
 </root>

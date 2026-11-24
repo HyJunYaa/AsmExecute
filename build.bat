@@ -1,4 +1,5 @@
 @echo off
+chcp 936 >nul 2>&1
 rem ============================================================
 rem build.bat - 一键批处理编译（纯 C#，无任何 C/C++ 工具链依赖）
 rem
@@ -42,7 +43,6 @@ if /i "%AS_PLAT%"=="all" (
     call :build_cs AsmStudio AsmStudio.csproj x86
 )
 if "%AS_FAILED%"=="1" goto :done
-
 rem ---- 2. GameSharp.exe（C#，x64 + x86 双架构输出）----
 echo.
 echo ===== [2/2] GameSharp (C# / MSBuild %AS_CFG%) =====
@@ -55,6 +55,12 @@ if /i "%AS_PLAT%"=="all" (
 )
 
 :done
+rem ---- 收尾: 把输出目录的完整性标签复位为 Medium ----
+rem 必须放在两个工程都构建完之后: bin 若被别的程序(沙箱/解压工具/同步盘)打上 Low 标签,
+rem Windows 会强制以受限身份运行其中的 exe —— 表现为"扫描只看到几十个进程、连接 access denied"。
+rem 幂等; 失败不影响构建结果, 只提示一句。
+if exist "%~dp0bin" icacls "%~dp0bin" /setintegritylevel "(OI)(CI)M" /T /C /Q >nul 2>&1
+if errorlevel 1 echo [!] 未能复位 bin 的完整性标签(可能权限不足) — 如遇"扫描进程数偏少", 请右键以管理员运行 修复权限标签.bat
 echo.
 if "%AS_FAILED%"=="1" (
     echo ===== 构建完成，但存在失败项 =====

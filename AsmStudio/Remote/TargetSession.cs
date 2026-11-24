@@ -4,6 +4,7 @@
 using System;
 using AsmStudio.Localization;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace AsmStudio.Remote
 {
@@ -29,7 +30,8 @@ namespace AsmStudio.Remote
             IntPtr h = NativeInterop.OpenProcess(NativeInterop.PROCESS_ALL_NEEDED, false, target.Pid);
             if (h == IntPtr.Zero)
             {
-                LastError = "OpenProcess failed (access denied or process exited)";
+                int err = Marshal.GetLastWin32Error();
+                LastError = LanguageService.T("OpenProcess failed: ") + ProcDiag.ExplainOpenFailure(err, target);
                 return false;
             }
             NativeInterop.CloseHandle(h);

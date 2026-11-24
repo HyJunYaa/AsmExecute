@@ -95,6 +95,9 @@
     <Compile Include="Controls\AsmEditor.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Include="Controls\PickHintForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Controls\EditorTheme.cs" />
     <Compile Include="Engine\AsmSyntax.cs" />
     <Compile Include="Engine\Lexicon\InstructionLexicon.cs" />
@@ -111,6 +114,7 @@
     <Compile Include="Remote\NativeInterop.cs" />
     <Compile Include="Remote\ExecutionResult.cs" />
     <Compile Include="Remote\ProcessScanner.cs" />
+    <Compile Include="Remote\ProcessPicker.cs" />
     <Compile Include="Remote\RemoteThreadExecutor.cs" />
     <Compile Include="Remote\AsmVeh.cs" />
     <Compile Include="Remote\RemoteSymbols.cs" />
@@ -137,6 +141,13 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Resources\Icons\app_64.ico">
       <LogicalName>AsmStudio.Icons.app_64.ico</LogicalName>
+    </EmbeddedResource>
+    <!-- 拖拽取进程：准星光标 + 工具栏图标（源文件来自火山版截图助手的 img\zz.cur、img\1.png） -->
+    <EmbeddedResource Include="Resources\zz.cur">
+      <LogicalName>AsmStudio.Resources.zz.cur</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\pick.png">
+      <LogicalName>AsmStudio.Resources.pick.png</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>

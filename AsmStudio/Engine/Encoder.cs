@@ -653,7 +653,11 @@ namespace AsmStudio.Engine
                         if (!IsX64 && size == 8) Fail("invalid qword on x86");
                         EmitLegacyAndRex(false, 0, RexIndexOfMemIndex(o.Mem), RexIndexOfMemBase(o.Mem),
                             o.Mem.Segment, size == 2, st.RepKind, false);
-                        Emit(0xFF);                 // FF /0 = pop r/m（同上：原缺 opcode）
+                        /* pop r/m 的 opcode 是 8F（/0），不是 FF：
+                         * FF /0 是 inc r/m —— 上一轮补 opcode 时误写成 FF，
+                         * 于是 pop qword ptr [rax] 静默编成 inc qword ptr [rax]
+                         * （gcc/as 实测：popl (%eax) = 8F 00，16 位再加 66）。 */
+                        Emit(0x8F);
                         EmitMemModRm(o.Mem, 0, 0);
                         return;
                     }

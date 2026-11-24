@@ -208,10 +208,14 @@ namespace AsmStudio.Engine
             v.Add(new Vector(I, X64, "bsf r8, r9", "4D 0F BC C1"));   // REX.X 不能跟着置位
             v.Add(new Vector(I, X64, "mov r8b, 1", "41 B0 01"));
 
-            // ============ push/pop 内存形式（FF /6、FF /0 的 opcode 字节）============
+            // ============ push/pop 内存形式（push=FF /6，pop=8F /0）============
+            // pop 的 opcode 是 8F —— FF /0 是 inc r/m，写成 FF 会静默变异成内存自增
             v.Add(new Vector(I, X64, "push qword ptr [r8]", "41 FF 30"));
-            v.Add(new Vector(I, X64, "pop qword ptr [r9]", "41 FF 01"));
+            v.Add(new Vector(I, X64, "pop qword ptr [r9]", "41 8F 01"));
             v.Add(new Vector(I, X64, "push qword ptr [rax]", "FF 30"));
+            v.Add(new Vector(I, X64, "pop qword ptr [rax]", "8F 00"));
+            v.Add(new Vector(I, X86, "pop dword ptr [ebp]", "8F 45 00"));
+            v.Add(new Vector(I, X86, "pop word ptr [eax]", "66 8F 00"));
 
             // ============ SIB：r12 作基址必须发 SIB（rsp 的特例同样适用）============
             v.Add(new Vector(I, X64, "mov rax, [r12]", "49 8B 04 24"));

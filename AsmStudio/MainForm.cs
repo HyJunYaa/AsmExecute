@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using AsmStudio.Controls;
@@ -39,6 +40,17 @@ namespace AsmStudio
             cboChannel.SelectedIndexChanged += ChannelChanged;
             _initialTemplate = GetDefaultTemplate();
             CreateDocument(null, null);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_picking) FinishPick(false);   // 拖拽中被关窗：先释放捕获、复位窗口
+            if (_pickHint != null)
+            {
+                _pickHint.Dispose();
+                _pickHint = null;
+            }
+            base.OnFormClosing(e);
         }
 
         protected override void OnLoad(EventArgs e)
@@ -142,6 +154,8 @@ namespace AsmStudio
             foreach (ToolStripItem it in toolbar.Items)
                 if (it is ToolStripButton || it is ToolStripLabel)
                     it.Text = T(OrigText(it, it.Text));
+            // 工具提示不在 Text 快照里，单独按原文重翻（未命中回退英文原文）
+            btnPickProcess.ToolTipText = T("Drag onto the target window, release the left button to select its process (Esc cancels)");
             // 通道下拉项（保留选中索引，从快照重翻）
             var cbo = cboChannel.ComboBox;
             if (cbo != null && _origChannelItems != null &&
@@ -240,6 +254,8 @@ namespace AsmStudio
                     if (s != null) this.Icon = new Icon(s);
                 }
                 btnScan.Image = (Image)_appRes.GetObject("Scan");
+                // 拖拽取进程按钮的准星图标来自工程内嵌的 pick.png（源：火山版 img\1.png）
+                btnPickProcess.Image = ProcessPicker.LoadPickImage();
                 btnConnect.Image = (Image)_appRes.GetObject("Connect");
                 btnDisconnect.Image = (Image)_appRes.GetObject("Disconnect");
                 btnAssemble.Image = (Image)_appRes.GetObject("Validate");
@@ -787,7 +803,13 @@ namespace AsmStudio
                     cboProcess.Items.Add(p.ToString());
                 }
                 lblTargetArch.Text = "";
-                Log(T("Scan finished: ") + _scanResult.Count + T(" processes"));
+                // 把自己的完整性/会话/位数一并打出来：进程数异常偏少、连不上时，一眼能看出
+                // 是本程序被压了完整性，而不是系统里真没那些进程
+                Log(T("Scan finished: ") + _scanResult.Count + T(" processes") +
+                    "  [self " + ProcDiag.Self() + "]");
+                string restrictedHint = ProcDiag.SelfRestrictionHint();
+                if (restrictedHint != null)
+                    Log("[!] " + restrictedHint);
             }
             catch (Exception ex)
             {
@@ -800,11 +822,347 @@ namespace AsmStudio
             }
         }
 
+        // ================= 拖拽取进程 =================
+        /*
+         * 交互照搬火山版「截图助手」的探测框：**按住**按钮即开始（MouseDown，不是 Click），
+         * 把本窗口移出所有显示器、SetCapture 抓鼠标、光标换成准星；按住拖到目标窗口上松开，
+         * 取 WindowFromPoint 的顶层窗口 → pid，回填进程下拉并直接连接。
+         *
+         * 与火山版的三处关键差异：
+         *  1. 不用 TerminateThread 杀探测线程——这里没有线程，全走消息（WndProc）。
+         *     捕获期间的鼠标消息本来就全部路由到本窗口，轮询线程纯属多余。
+         *  2. 必须"先移窗口、再 SetCapture"。反过来的话鼠标此刻正压在自家窗口上，
+         *     取点会先命中自己。
+         *  3. 跟随光标的提示窗实时显示 pid/类名/标题，避免盲拖。
+         *
+         * 为什么不用 ToolStripButton.Click：Click 要等左键抬起才触发，那时"按住拖出去"的
+         * 手势已经结束，只能退化成"点一下按钮 → 再移动 → 再点一下"；而且点完不动鼠标时
+         * 没有任何 WM_MOUSEMOVE，光标不会变成准星。所以改成 MouseDown 启动 + 定时守护光标。
+         */
+
+        private const int WM_SETCURSOR = 0x0020;
+        private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_LBUTTONUP = 0x0202;
+        private const int WM_RBUTTONUP = 0x0205;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_CAPTURECHANGED = 0x0215;
+        private const int VK_ESCAPE = 0x1B;
+        private const int HTCLIENT = 1;
+
+        private bool _picking;
+        private Rectangle _pickBounds;
+        private Point _pickHintLast;   // 上一次刷新提示的位置，用于节流
+        private FormWindowState _pickState;
+        private Cursor _pickPrevCursor;
+        private PickHintForm _pickHint;
+        private Timer _pickCursorTimer;   // 拖拽期间守着准星光标（别的窗口的 WM_SETCURSOR 会抢）
+
+        /// <summary>
+        /// 按住按钮就开始取进程（鼠标按下即捕获），拖到目标窗口松手即成。
+        /// 用 Click 做不到——Click 要等左键抬起才触发，那时"按住拖出去"的手势已经结束，
+        /// 只能退化成"点一下按钮 → 再移动 → 再点一下"。
+        /// </summary>
+        private void BtnPickProcessMouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+            // 排到消息边界再接管：ToolStrip 处理完本次按下（包括它自己的 Capture）之后才轮到我们
+            BeginInvoke((Action)delegate
+            {
+                if (!_picking) StartPick();
+            });
+        }
+
+        private void BtnPickProcessClick(object sender, EventArgs e)
+        {
+            if (_picking)
+            {
+                FinishPick(false);          // 再点一次 = 取消
+                return;
+            }
+            if (_executing)
+            {
+                Log("[!] pick: execution in progress, retry when it finishes");
+                return;
+            }
+            StartPick();
+        }
+
+        private void StartPick()
+        {
+            _picking = true;
+            _pickState = WindowState;
+            _pickBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            _pickPrevCursor = Cursor;
+
+            if (_pickHint == null) _pickHint = new PickHintForm();
+            _pickHint.Cursor = ProcessPicker.PickerCursor;   // 提示窗万一被压在光标下，也别把它换回箭头
+
+            toolbar.Capture = false;          // 先吐掉 ToolStrip 自己的捕获，否则它会把 mouseup 吃掉
+            ClearPressedState(btnPickProcess);   // 捕获被抢走，ToolStrip 收不到 up，得手动复位按下态
+
+            WindowState = FormWindowState.Normal;      // 最大化状态下 Location 无效
+            Location = new Point(-32000, -32000);      // 移出所有显示器（含负坐标副屏）
+            NativeInterop.SetCapture(Handle);          // 必须在让开屏幕之后
+            Cursor = ProcessPicker.PickerCursor;
+            NativeInterop.SetCursor(ProcessPicker.PickerCursor.Handle);
+            StartPickCursorGuard();                    // 不动鼠标也要立刻变准星，并持续守住
+
+            lblStatus.Text = T("Hold the left button, drag onto the target window, release to pick (Esc cancels)");
+            // 窗口已在屏幕外，状态栏看不见，所以就地给一条指引
+            _pickHintLast = new Point(-1000000, -1000000);   // 清掉节流基准，保证首帧一定刷新
+            _pickHint.ShowHint(T("Drag over a window, release to pick  -  Esc / right click cancels"),
+                System.Windows.Forms.Cursor.Position);
+            Log("[pick] armed, cursor=" + ProcessPicker.CursorReport);
+        }
+
+        /// <summary>
+        /// 把 ToolStripButton 从"按下"态复位。
+        /// Pressed 只有 getter，状态位藏在 ToolStripItem 私有的 BitVector32 state 里，正常由
+        /// ToolStrip 收到 mouseup 时清掉——可我们在 mouseup 之前就把捕获抢走了，ToolStrip 再也
+        /// 收不到 up，按钮会一直亮着按下色。这里直接把那一位清掉。
+        /// 反射失败只影响外观，不影响取进程（整段有 try/catch 兜底）。
+        /// 注意：依赖 ToolStripItem 的私有字段名 state / statePressed —— 这两个名字在
+        /// .NET Framework 4.x 的 WinForms 里稳定；若将来换运行时（.NET Core 之后的 WinForms
+        /// 重写过 ToolStrip），必须回来复核，否则会静默退回"按钮卡住高亮"的老毛病。
+        /// </summary>
+        private static void ClearPressedState(ToolStripItem item)
+        {
+            if (item == null) return;
+            try
+            {
+                System.Reflection.FieldInfo stateField = typeof(ToolStripItem)
+                    .GetField("state", System.Reflection.BindingFlags.NonPublic |
+                                       System.Reflection.BindingFlags.Instance);
+                System.Reflection.FieldInfo maskField = typeof(ToolStripItem)
+                    .GetField("statePressed", System.Reflection.BindingFlags.NonPublic |
+                                              System.Reflection.BindingFlags.Static);
+                if (stateField == null || maskField == null) return;
+                System.Collections.Specialized.BitVector32 state =
+                    (System.Collections.Specialized.BitVector32)stateField.GetValue(item);
+                state[(int)maskField.GetValue(null)] = false;
+                stateField.SetValue(item, state);
+                item.Invalidate();
+            }
+            catch
+            {
+            }
+        }
+
+        /// <summary>拖拽期间每 30ms 重设一次准星：目标窗口的 WM_SETCURSOR 会把自己的光标抢回去</summary>
+        private void StartPickCursorGuard()
+        {
+            if (_pickCursorTimer == null)
+            {
+                _pickCursorTimer = new Timer();
+                _pickCursorTimer.Interval = 30;
+                _pickCursorTimer.Tick += delegate
+                {
+                    if (!_picking) { _pickCursorTimer.Stop(); return; }
+                    NativeInterop.SetCursor(ProcessPicker.PickerCursor.Handle);
+                };
+            }
+            _pickCursorTimer.Start();
+        }
+
+        private void UpdatePickHint()
+        {
+            Point pt = System.Windows.Forms.Cursor.Position;
+            /* 拖动时 WM_MOUSEMOVE 可达每秒数百次，每次都要 WindowFromPoint + 两次
+             * GetWindowTextW，再把提示窗 SetWindowPos 一次。光标几乎没动（<2px）时
+             * 光标下的窗口不可能变，直接跳过。 */
+            if (Math.Abs(pt.X - _pickHintLast.X) < 2 && Math.Abs(pt.Y - _pickHintLast.Y) < 2)
+                return;
+            _pickHintLast = pt;
+
+            WindowTarget t = ProcessPicker.Query(pt);
+            _pickHint.ShowHint(t.IsValid ? t.Summary() : "(no window)", pt);
+        }
+
+        private void FinishPick(bool commit)
+        {
+            if (!_picking) return;
+            _picking = false;              // 先清标志：ReleaseCapture 会回送 WM_CAPTURECHANGED
+            if (_pickCursorTimer != null) _pickCursorTimer.Stop();
+            NativeInterop.ReleaseCapture();
+            if (_pickHint != null) _pickHint.HideHint();
+
+            Point pt = System.Windows.Forms.Cursor.Position;
+            /* 还原成"取进程之前那个"光标，而不是一律箭头：进来时可能正挂着 WaitCursor
+             * （扫描/执行中按下的按钮），一律换箭头会把它提前抹掉，等长任务结束时
+             * 又会被 Cursor = Default 二次覆盖，视觉上闪一下。 */
+            Cursor prev = _pickPrevCursor != null ? _pickPrevCursor : Cursors.Default;
+            Cursor = prev;
+            NativeInterop.SetCursor(prev.Handle);   // 守护定时器已停，主动把准星换回去
+            WindowState = FormWindowState.Normal;
+            Bounds = _pickBounds;
+            WindowState = _pickState;
+            Activate();
+            lblStatus.Text = T("Ready");
+
+            if (!commit)
+            {
+                Log("[pick] cancelled");
+                return;
+            }
+            ApplyPickedTarget(ProcessPicker.Query(pt));
+        }
+
+        private void ApplyPickedTarget(WindowTarget t)
+        {
+            if (t == null || !t.IsValid)
+            {
+                Log("[!] pick: no window under cursor");
+                return;
+            }
+            // 在自家按钮上直接松手（没拖出去）会命回自己，选自己没有意义
+            if (t.Pid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id)
+            {
+                Log("[!] pick: that window belongs to AsmStudio itself, ignored");
+                return;
+            }
+            Log(string.Format("[pick] hwnd=0x{0:X} pid={1} class={2} title={3}",
+                t.Root.ToInt64(), t.Pid, t.ClassName, t.Title));
+
+            int idx = IndexOfPid((int)t.Pid);
+            if (idx < 0)
+            {
+                BtnScanClick(this, EventArgs.Empty);   // 列表没建过，或目标是扫描后新起的
+                idx = IndexOfPid((int)t.Pid);
+                if (idx < 0)
+                    Log(string.Format("[pick] rescan has {0} entries but no pid {1}", _scanResult.Count, t.Pid));
+            }
+            if (idx < 0)
+            {
+                /* 补扫也找不到，不能再当死路：扫描本身可能失败（异常/被安全软件拦），进程也可能
+                 * 刚起、在别的会话/别的用户下。pid 已经拿到了，直接现场解析补进列表，
+                 * 真正的障碍（权限/位数/保护）留给 Connect 去报准确错误。 */
+                ProcessInfo resolved = DescribeProcess(t.Pid, t.Title.Length > 0 ? t.Title : t.ClassName);
+                if (resolved != null)
+                {
+                    _scanResult.Add(resolved);
+                    cboProcess.Items.Add(resolved.ToString());
+                    idx = _scanResult.Count - 1;
+                    Log("[pick] not in scan list, added on the fly: " + resolved);
+                }
+            }
+            if (idx < 0)
+            {
+                MessageBox.Show(this,
+                    string.Format("Window \"{0}\" (pid {1}) could not be resolved.\r\n" +
+                        "The process has probably exited, or it is protected / in another session.",
+                        t.Title.Length > 0 ? t.Title : t.ClassName, t.Pid),
+                    T("Info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            cboProcess.SelectedIndex = idx;
+            lblTargetArch.Text = _scanResult[idx].ArchText;
+            Log("[+] picked: " + _scanResult[idx].ToString());
+            BtnConnectClick(this, EventArgs.Empty);    // 选定即连接
+        }
+
+        /// <summary>
+        /// 不走扫描列表，按 pid 现场取进程名与位数（给"扫描列表里没有"的 pid 兜底）。
+        /// 进程已退出返回 null；权限不足但进程还在时仍返回条目，让 Connect 去报真实错误。
+        /// </summary>
+        private ProcessInfo DescribeProcess(uint pid, string titleFallback)
+        {
+            const int ERROR_INVALID_PARAMETER = 87;   // OpenProcess 对不存在的 pid 就是 87
+            try
+            {
+                IntPtr h = NativeInterop.OpenProcess(NativeInterop.PROCESS_QUERY_INFORMATION, false, (int)pid);
+                if (h == IntPtr.Zero && Marshal.GetLastWin32Error() == ERROR_INVALID_PARAMETER)
+                    return null;                      // 进程已经没了
+                if (h != IntPtr.Zero) NativeInterop.CloseHandle(h);
+
+                ProcessInfo info = new ProcessInfo();
+                info.Pid = (int)pid;
+                try
+                {
+                    using (System.Diagnostics.Process p = System.Diagnostics.Process.GetProcessById((int)pid))
+                        info.Name = p.ProcessName + ".exe";
+                }
+                catch
+                {
+                }
+                if (string.IsNullOrEmpty(info.Name))
+                {
+                    string fb = (titleFallback ?? "").Trim();
+                    if (fb.Length > 40) fb = fb.Substring(0, 40) + "...";
+                    info.Name = fb.Length > 0 ? fb : ("pid " + pid);
+                }
+                info.Is64Bit = ProcessScanner.DetectBitness((int)pid);
+                return info;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private int IndexOfPid(int pid)
+        {
+            for (int i = 0; i < _scanResult.Count; i++)
+                if (_scanResult[i].Pid == pid) return i;
+            return -1;
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (_picking)
+            {
+                switch (m.Msg)
+                {
+                    case WM_SETCURSOR:
+                        /* 光标到底画谁的图，取决于"最后谁 SetCursor"。捕获期间系统会把
+                         * WM_SETCURSOR 送回捕获窗口（本窗口），这里直接接管并回 TRUE，
+                         * 让 DefWindowProc / 目标窗口都没有机会把它改回箭头或 I-Beam。
+                         * 之前的 30ms 轮询是"抢"，谁快谁赢；这里是"独占"。 */
+                        NativeInterop.SetCursor(ProcessPicker.PickerCursor.Handle);
+                        if ((m.LParam.ToInt64() & 0xFFFF) == HTCLIENT)
+                        {
+                            m.Result = (IntPtr)1;   // 已处理
+                            return;
+                        }
+                        break;
+                    case WM_MOUSEMOVE:
+                        /* 双保险：个别环境下 WM_SETCURSOR 会被系统吞掉（例如光标正压在
+                         * 目标窗口的非客户区），移动时再重设一次。 */
+                        NativeInterop.SetCursor(ProcessPicker.PickerCursor.Handle);
+                        UpdatePickHint();
+                        break;
+                    case WM_LBUTTONUP:
+                        FinishPick(true);      // 松开左键 = 选定光标下的窗口
+                        return;
+                    case WM_RBUTTONUP:
+                        FinishPick(false);
+                        return;
+                    case WM_KEYDOWN:
+                        if (m.WParam.ToInt32() == VK_ESCAPE)
+                        {
+                            FinishPick(false);
+                            return;
+                        }
+                        break;
+                    case WM_CAPTURECHANGED:
+                        if ((IntPtr)m.LParam != Handle)   // 捕获被别人抢走 → 取消
+                        {
+                            FinishPick(false);
+                            return;
+                        }
+                        break;
+                }
+            }
+            base.WndProc(ref m);
+        }
+
         private bool _ensureScanQueued;   // 按键连击时只排一个延迟扫描
 
         private void CboProcessEnsureScan(object sender, EventArgs e)
         {
-            // 打开下拉 / 点输入框 / 输入首字符时若尚无扫描结果则自动扫描。
+            // 打开下拉 / 点一下下拉框时若尚无扫描结果则自动扫描。
+            // （下拉框现在是 DropDownList，不能再手输；绑定 TextChanged 是历史遗留，
+            //  选中项变化时也会触发，但这里只判断「列表空不空」，重复触发无副作用。）
             // 扫描必须延后到独立消息边界（BeginInvoke）——此前在按键/点击消息处理的
             // 半路同步重建列表，native combo 在消息中途遭遇下拉窗销毁重建，
             // 后续按键落上去就 comctl32 AV 闪退（用户实测：展开下拉疯狂敲进程名
@@ -851,7 +1209,10 @@ namespace AsmStudio
                 return;
             }
             lblTargetArch.Text = target.ArchText;
-            cboProcess.Text = target.ToString();   // 手输名称规整为完整项文本
+            // 下拉框已是 DropDownList（不可手输），Text 在此样式下只读、赋值会被忽略，
+            // 改成按项文本定位选中项 —— 保证「高亮的那一项」就是真正要连的进程
+            int selIdx = cboProcess.Items.IndexOf(target.ToString());
+            if (selIdx >= 0) cboProcess.SelectedIndex = selIdx;
 
             _session = new TargetSession();
             bool ok = _session.Connect(target, channel);
@@ -1244,13 +1605,21 @@ namespace AsmStudio
             if (doc == null || lstErrors.SelectedIndex < 0) return;
             string text = lstErrors.SelectedItem as string;
             if (text == null) return;
-            // 前缀是本地化字符串（"Row " / "行 "），长度不能写死
-            int li = text.IndexOf(T("Row "));
+            // 前缀匹配：AsmError.ToString() 恒输出英文 "Row {0}"（引擎层不依赖本地化），
+            // 所以先按本地化前缀找，找不到再退回字面量 "Row " —— 否则中文界面永远跳不过去
+            string locPrefix = T("Row ");
+            int li = text.IndexOf(locPrefix, StringComparison.Ordinal);
+            int prefixLen = locPrefix.Length;
+            if (li < 0)
+            {
+                li = text.IndexOf("Row ", StringComparison.Ordinal);
+                prefixLen = 4;   // "Row " 的固定长度
+            }
             int lineNo = 0;
             if (li >= 0)
             {
                 StringBuilder num = new StringBuilder();
-                for (int i = li + T("Row ").Length; i < text.Length && char.IsDigit(text[i]); i++)
+                for (int i = li + prefixLen; i < text.Length && char.IsDigit(text[i]); i++)
                     num.Append(text[i]);
                 int.TryParse(num.ToString(), out lineNo);
             }
@@ -1600,8 +1969,12 @@ namespace AsmStudio
             emit();
             if (quoted) { err = T("Unterminated quoted string in args"); return false; }
 
+            int seq = 0;   // 顺序模式下的参数槽位（必须用位置计数，不能用 parts.IndexOf(p)：
+                           // 值相同的 token（如 ",0,0,0" 里的三个 0）会被判成同一个元素，
+                           // 槽位全部塌回第一次出现的位置，nargs 也随之错误）
             foreach (KeyValuePair<bool, string> p in parts)
             {
+                int thisSeq = seq++;
                 string tok = p.Value;
                 int slot;
                 string val = tok;
@@ -1622,7 +1995,7 @@ namespace AsmStudio
                 }
                 else
                 {
-                    slot = parts.IndexOf(p);
+                    slot = thisSeq;
                 }
                 if (slot < 0 || slot > 3)
                 {

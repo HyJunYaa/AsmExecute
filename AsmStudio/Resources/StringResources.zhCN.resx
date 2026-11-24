@@ -78,6 +78,18 @@
   <data name="Scan Processes" xml:space="preserve">
     <value>扫描进程</value>
   </data>
+  <data name="Drag to Pick" xml:space="preserve">
+    <value>拖动取进程</value>
+  </data>
+  <data name="Hold the left button, drag onto the target window, release to pick (Esc cancels)" xml:space="preserve">
+    <value>按住左键拖到目标窗口上，松开即选中（Esc 取消）</value>
+  </data>
+  <data name="Drag over a window, release to pick  -  Esc / right click cancels" xml:space="preserve">
+    <value>拖到目标窗口上松开左键即选中  -  Esc / 右键取消</value>
+  </data>
+  <data name="Drag onto the target window, release the left button to select its process (Esc cancels)" xml:space="preserve">
+    <value>按住左键拖到目标窗口上，松开左键即选中该窗口的进程（Esc 取消）</value>
+  </data>
   <data name="Browse exports: module → API (fills call target)" xml:space="preserve">
     <value>浏览导出：模块 → API（自动填调用目标）</value>
   </data>
@@ -272,18 +284,6 @@
   </data>
   <data name="  2. Click [Scan Processes], pick a target, then Connect" xml:space="preserve">
     <value>  2. 点击【扫描进程】并选择目标 → 连接</value>
-  </data>
-  <data name="&amp;Close" xml:space="preserve">
-    <value>关闭(&amp;C)</value>
-  </data>
-  <data name="&amp;Save This" xml:space="preserve">
-    <value>单独保存(&amp;S)</value>
-  </data>
-  <data name="Close &amp;Others" xml:space="preserve">
-    <value>关闭其他(&amp;O)</value>
-  </data>
-  <data name="Close &amp;All" xml:space="preserve">
-    <value>全部关闭(&amp;A)</value>
   </data>
   <data name="&amp;Clear Log" xml:space="preserve">
     <value>清空日志(&amp;L)</value>
@@ -563,5 +563,50 @@
   </data>
   <data name="Please select a scheme." xml:space="preserve">
     <value>请选择一个方案。</value>
+  </data>
+  <data name="High/Admin" xml:space="preserve">
+    <value>High/管理员</value>
+  </data>
+  <data name="Medium/Normal" xml:space="preserve">
+    <value>Medium/普通</value>
+  </data>
+  <data name="Low/Restricted" xml:space="preserve">
+    <value>Low/受限</value>
+  </data>
+  <data name="This app runs in a restricted context (Low integrity): the process list will be incomplete and write access to other processes is denied; its parent process cannot be read either, so the cause is unknown" xml:space="preserve">
+    <value>本程序跑在受限上下文（Low 完整性）：进程列表会不全，也拿不到别的进程的写权限；且查不到父进程，无法判断来源</value>
+  </data>
+  <data name="This app runs at Low integrity and its parent {0}(pid={1}) cannot be read; the process list will be incomplete and write access to other processes is denied" xml:space="preserve">
+    <value>本程序跑在受限上下文（Low 完整性），父进程 {0}(pid={1}) 读不到信息；进程列表会不全，也拿不到别的进程的写权限</value>
+  </data>
+  <data name="This app runs at Low integrity, but its parent {0}(pid={1}, {2}) has normal privileges - so AsmStudio.exe itself or its folder carries a Low integrity label and Windows forced the demotion. This has nothing to do with how you launched it (administrator or not, from which folder). Fix: re-run build.bat (it resets bin at the end), or run the local repair tool from the project root, or manually run icacls /setintegritylevel (OI)(CI)M /T on that folder - then restart this app" xml:space="preserve">
+    <value>本程序跑在 Low 完整性，但父进程 {0}(pid={1}, {2}) 是普通权限 —— 说明是 AsmStudio.exe 本身或它所在目录带了「低完整性标签」，被 Windows 强制降权，与你用不用管理员运行、从哪儿启动都无关。修法：重新跑一次 build.bat（收尾会自动复位 bin），或运行项目根目录的「修复权限标签.bat」（本地工具，未纳入版本库），也可手工对该目录执行 icacls /setintegritylevel (OI)(CI)M /T，然后重启本程序</value>
+  </data>
+  <data name="This app runs at Low integrity and its parent {0}(pid={1}, {2}) is restricted too - the demotion came from upstream in the launch chain (sandbox / restricted launcher). Launch the exe directly from Explorer" xml:space="preserve">
+    <value>本程序跑在 Low 完整性，父进程 {0}(pid={1}, {2}) 同样是受限的 —— 是启动链上游（沙箱/受限启动器）压下来的，请从资源管理器直接双击 exe</value>
+  </data>
+  <data name="; also this app itself runs at Low integrity (see the [!] line in the log) - every normal process will then deny write access, fix the integrity level first" xml:space="preserve">
+    <value>；另外本程序自身跑在 Low 完整性（见日志里 [!] 那行），这种情况所有普通进程都会拒绝写权限，先修完整性再重试</value>
+  </data>
+  <data name="; for an elevated target, run this app as administrator" xml:space="preserve">
+    <value>；目标是管理员进程时请以管理员身份运行本程序</value>
+  </data>
+  <data name="Access denied - target {0}, this app {1}{2}" xml:space="preserve">
+    <value>访问被拒绝 —— 目标 {0}，本程序 {1}{2}</value>
+  </data>
+  <data name="pid no longer exists (process exited or pid reused), please rescan" xml:space="preserve">
+    <value>pid 已不存在（进程退出或 pid 被复用），请重新扫描</value>
+  </data>
+  <data name="invalid system handle (the target may have just exited)" xml:space="preserve">
+    <value>系统句柄无效（目标可能刚退出）</value>
+  </data>
+  <data name="win32={0}, target {1}, this app {2}" xml:space="preserve">
+    <value>win32={0}，目标 {1}，本程序 {2}</value>
+  </data>
+  <data name="OpenProcess failed: " xml:space="preserve">
+    <value>OpenProcess 失败：</value>
+  </data>
+  <data name="Assembly VEH install failed: " xml:space="preserve">
+    <value>汇编 VEH 安装失败：</value>
   </data>
 </root>
