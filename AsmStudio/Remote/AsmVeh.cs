@@ -46,6 +46,7 @@ namespace AsmStudio.Remote
         private ulong _exitThread;    // 目标进程内 ExitThread 地址
         private bool _is64;
         private bool _installed;
+        private bool _leakPage;   // 安装失败且 handler 状态无法确认：页/句柄故意泄漏，Dispose 不得再释放
 
         public bool Installed { get { return _installed; } }
         public ulong DataAddress { get { return (ulong)_dataAddr.ToInt64(); } }
@@ -147,15 +148,35 @@ namespace AsmStudio.Remote
                 }
                 try
                 {
-                    NativeInterop.WaitForSingleObject(thread, 3000);
+                    uint wait = NativeInterop.WaitForSingleObject(thread, 3000);
                     // 桩以 ExitThread(句柄) 收尾，退出码为句柄低 32 位（任意值）；
                     // 以data块里的句柄为准（桩已写入 [DATA+0x20]）
                     byte[] hbuf = new byte[8];
                     UIntPtr hread;
-                    if (!NativeInterop.ReadProcessMemory(_proc,
-                            new IntPtr(_dataAddr.ToInt64() + 0x20), hbuf, (UIntPtr)8, out hread) ||
-                        BitConverter.ToUInt64(hbuf, 0) == 0)
+                    if (wait != NativeInterop.WAIT_OBJECT_0)
                     {
+                        /* 注册线程未确认结束（WAIT_TIMEOUT/WAIT_FAILED）：无法证明 AVEH 是否成功。
+                         * 此时释放页 = 仍在页内取指的线程 / 可能已登记的 handler 指向已释放内存，
+                         * 目标后续任意异常即崩。与执行页超时同一取舍：故意泄漏页 + 进程句柄。 */
+                        _leakPage = true;
+                        error = "VEH register thread not confirmed finished (wait=0x" + wait.ToString("X") +
+                            ", err=" + System.Runtime.InteropServices.Marshal.GetLastWin32Error() +
+                            "); handler state unknown, page intentionally leaked";
+                        return false;
+                    }
+                    if (!NativeInterop.ReadProcessMemory(_proc,
+                            new IntPtr(_dataAddr.ToInt64() + 0x20), hbuf, (UIntPtr)8, out hread))
+                    {
+                        /* 线程已结束但句柄读不回：无法证明 handler 未被登记 → 同样泄漏，
+                         * 绝不能按"安装失败"释放 handler 可能正指向的页。 */
+                        _leakPage = true;
+                        error = "VEH handle unreadable after the register thread exited; " +
+                            "handler state unknown, page intentionally leaked";
+                        return false;
+                    }
+                    if (BitConverter.ToUInt64(hbuf, 0) == 0)
+                    {
+                        // 线程结束 + 读回成功 + 句柄=0：AVEH 真失败、handler 未登记，页可安全释放
                         error = "AddVectoredExceptionHandler failed (handle not written)";
                         return false;
                     }
@@ -169,7 +190,7 @@ namespace AsmStudio.Remote
             }
             finally
             {
-                if (!_installed) Cleanup();
+                if (!_installed && !_leakPage) Cleanup();
             }
         }
 
@@ -275,48 +296,90 @@ namespace AsmStudio.Remote
             NativeInterop.WriteProcessMemory(_proc, _dataAddr, zeroFlag, (UIntPtr)4, out written);
         }
 
+        /// <summary>撤销失败：目标进程可能仍挂着指向本页的 handler，此时绝不能释放该页</summary>
+        public bool DetachFailed;
+
         public void Dispose()
         {
+            if (_leakPage)
+            {
+                // 安装失败且 handler 状态未确认：页是故意泄漏的（目标线程可能仍在页内取指 /
+                // handler 可能已登记在本页），Dispose 绝不能二次释放
+                DetachFailed = true;
+                return;
+            }
+            bool detached = true;
             if (_installed)
             {
-                // 尽力撤销注册（读回 vehHandle）
+                // 读回 vehHandle 并撤销注册，同时确认 RtlRemoveVectoredExceptionHandler 的返回值
                 byte[] buf = new byte[8];
                 UIntPtr read;
-                if (NativeInterop.ReadProcessMemory(_proc,
+                if (!NativeInterop.ReadProcessMemory(_proc,
                         new IntPtr(_dataAddr.ToInt64() + 0x20), buf, (UIntPtr)8, out read))
                 {
+                    detached = false;              // 连句柄都读不回，无法证明已摘除
+                }
+                else
+                {
                     ulong handle = BitConverter.ToUInt64(buf, 0);
-                    if (handle != 0) RemoteRemove(handle);
+                    if (handle != 0) detached = RemoteRemove(handle);
                 }
                 _installed = false;
+            }
+            if (!detached)
+            {
+                /* 释放页会让仍注册的 handler 指向已释放内存 —— 目标下次任意异常就崩。
+                 * 这里宁可泄漏一页 + 一个进程句柄（与超时路径同一取舍），并把事实交给上层提示。 */
+                DetachFailed = true;
+                return;
             }
             Cleanup();
         }
 
-        private void RemoteRemove(ulong handle)
+        /// <summary>撤销注册；只有远端线程退出码非 0（RVEH 成功）才算确认</summary>
+        private bool RemoteRemove(ulong handle)
         {
+            IntPtr tmp = IntPtr.Zero;
+            bool removed = false;
+            bool freeTmp = false;
             try
             {
                 // ExitThread 地址按安装时的 delta 重算（_rveh 已含 delta，ExitThread 同理缓存）
                 byte[] stub = _is64 ? BuildRemoveStubX64(handle, _rveh, _exitThread)
                                     : BuildRemoveStubX86(handle, _rveh, _exitThread);
-                IntPtr tmp = NativeInterop.VirtualAllocEx(_proc, IntPtr.Zero, (UIntPtr)0x1000,
+                tmp = NativeInterop.VirtualAllocEx(_proc, IntPtr.Zero, (UIntPtr)0x1000,
                     NativeInterop.MEM_COMMIT | NativeInterop.MEM_RESERVE,
                     NativeInterop.PAGE_EXECUTE_READWRITE);
-                if (tmp == IntPtr.Zero) return;
+                if (tmp == IntPtr.Zero) return false;
                 UIntPtr written;
                 NativeInterop.WriteProcessMemory(_proc, tmp, stub, (UIntPtr)stub.Length, out written);
                 IntPtr thread, tid;
                 thread = NativeInterop.CreateRemoteThread(_proc, IntPtr.Zero, UIntPtr.Zero,
                     tmp, IntPtr.Zero, 0, out tid);
-                if (thread != IntPtr.Zero)
+                if (thread == IntPtr.Zero)
                 {
-                    NativeInterop.WaitForSingleObject(thread, 2000);
-                    NativeInterop.CloseHandle(thread);
+                    freeTmp = true;    // 线程没起来，页无人引用，可释放
+                    return false;
                 }
-                NativeInterop.VirtualFreeEx(_proc, tmp, UIntPtr.Zero, NativeInterop.MEM_RELEASE);
+                uint wait = NativeInterop.WaitForSingleObject(thread, 2000);
+                if (wait == NativeInterop.WAIT_OBJECT_0)
+                {
+                    uint code;
+                    removed = NativeInterop.GetExitCodeThread(thread, out code) && code != 0;
+                    freeTmp = true;    // 线程已确认结束，remove 桩页不再被引用，可释放
+                }
+                /* 超时/失败：线程可能仍在页内取指（目标被挂起/抢占时 remove 桩也可能停在半路）——
+                 * 与执行页同一取舍：故意泄漏该页，不在运行中的线程脚下撤页（removed 保持 false，
+                 * 上层把 handler 页也一并保留）。 */
+                NativeInterop.CloseHandle(thread);
             }
             catch { /* 尽力而为 */ }
+            finally
+            {
+                if (freeTmp && tmp != IntPtr.Zero)
+                    NativeInterop.VirtualFreeEx(_proc, tmp, UIntPtr.Zero, NativeInterop.MEM_RELEASE);
+            }
+            return removed;
         }
 
         private void Cleanup()
@@ -371,7 +434,9 @@ namespace AsmStudio.Remote
          * rcx = EXCEPTION_POINTERS*；只用易变寄存器(rax/rcx/rdx/r9)。
          * 入口记录 (code, rip, flag, 计数) 到data块 +0x38/+0x40/+0x4C/+0x48（诊断），再走过滤。
          * OURS 路径: 记录 fault → 清 flag →
-         *   ctx.Rip = [DATA+0x18]（宿主写入的桩收尾段地址）、ctx.Rsp = [DATA+0x10]-24
+         *   ctx.Rip = [DATA+0x18]（宿主写入的桩锚点重载块/收尾段地址：先经 [DATA+0x74]
+          *   重载 rbx/rdi 再落结果——用户码可能已在崩溃前毁掉 rdi，直接落点 mov [rdi], rax
+          *   会写错地址且 flag 已清、不再拦截）、ctx.Rsp = [DATA+0x10]-24
          *   （等效"用户码已返回、3 个 push 仍在栈上"）→ EXCEPTION_CONTINUE_EXECUTION。
          *   线程在桩收尾段正常 ExitThread，进程存活。 */
         private static byte[] BuildHandlerX64(ulong dataAddr)
@@ -442,7 +507,8 @@ namespace AsmStudio.Remote
          *   handler 返回约定 stdcall ret 4（实测：plain ret 会炸调度器，连 SEH 都走不到）。
          * 入口先做完整现场记录仪（寄存器一律取自 CONTEXT 而非 live 值），再走过滤。
          * OURS 路径同 x64: 记录 fault → 清 flag → 改 ctx（Eip=resumeEip、Esp=savedEsp-12）
-         *   → CONTINUE_EXECUTION，线程在桩收尾段 ExitThread。 */
+         *   → CONTINUE_EXECUTION，线程在桩收尾段 ExitThread。
+          * resumeEip 同 x64 指向锚点重载块开头（先重载 ebx/edi 再落结果）。 */
         private static byte[] BuildHandlerX86(ulong dataAddr)
         {
             Emitter e = new Emitter();
@@ -489,8 +555,7 @@ namespace AsmStudio.Remote
             e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x5C);   // mov [DATA+0x5C], ecx  faultEbp
             e.Bytes(0x8B, 0x8A, 0xC0, 0x00, 0x00, 0x00);       // mov ecx, [edx+0xC0]   ctx.EFlags
             e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x60);   // mov [DATA+0x60], ecx  faultEflags
-            e.Bytes(0x8B, 0x0D); e.Abs32((long)dataAddr);      // mov ecx, [DATA]       flagSeen
-            e.Bytes(0x89, 0x0D); e.Abs32((long)dataAddr + 0x4C);   // mov [DATA+0x4C], ecx
+            // flagSeen 已在入口 ours_go 处快照写入 [DATA+0x4C]（入口值），此处不重复写
             e.Bytes(0xFF, 0x05); e.Abs32((long)dataAddr + 0x48);   // inc dword [DATA+0x48] seenCount
             e.Bytes(0x8B, 0x08);                               // mov ecx, [eax]        恢复 ER*
             e.Bytes(0x8B, 0x11);                               // mov edx, [ecx]        恢复 ExceptionCode（供过滤）

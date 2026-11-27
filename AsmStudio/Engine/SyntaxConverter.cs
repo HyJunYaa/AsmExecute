@@ -250,7 +250,11 @@ namespace AsmStudio.Engine
                     string t = newOps[0]; newOps[0] = newOps[1]; newOps[1] = t;
                     return true;
                 }
-                if (mnem.StartsWith("movs") && mnem.Length >= 5 && mnem != "movsb" && mnem != "movsw" && mnem != "movsd")
+                // movsq 是 GAS 的 64 位串操作（不是符号扩展双后缀形），必须原样保留；
+                // 旧条件只排除了 movsb/movsw/movsd，movsq 会漏进 movsx 分支被错转
+                // （合法裸 movsq 靠"操作数不足 2 个"侥幸兜住，畸形两操作数形式会错转成 movsx）
+                if (mnem.StartsWith("movs") && mnem.Length >= 5 && mnem != "movsb" && mnem != "movsw" &&
+                    mnem != "movsd" && mnem != "movsq")
                 {
                     if (ops.Count != 2) { err = "movs?? needs 2 operands"; return false; }
                     char srcL = mnem[4];
@@ -262,9 +266,13 @@ namespace AsmStudio.Engine
                     string t = newOps[0]; newOps[0] = newOps[1]; newOps[1] = t;
                     return true;
                 }
-                // 尺寸后缀剥离：剥掉尾字母后须仍是已知助记符（防 call→cal / shl→sh 误剥）
+                // 尺寸后缀剥离：剥掉尾字母后须仍是已知助记符（防 call→cal / shl→sh 误剥）。
+                // 全词本身已是合法助记符时不剥（movsb/movsw/movsd/movsq/movsl、stosq、lodsb…
+                // 在 Intel 侧同名同义）——旧条件只按"剥后是词"判定，AT&T 的 rep movsb/stosq
+                // 会被剥成 movs/stos（引擎默认 32 位），静默改掉实际操作宽度。
+                // GAS 独有的 l 后缀形（stosl/lodsl…）不在词库，仍正常剥。
                 string srcL2 = "";
-                if (mnem.Length > 2)
+                if (mnem.Length > 2 && !InstructionLexicon.IsMnemonicKeyword(mnem))
                 {
                     char last = mnem[mnem.Length - 1];
                     if ((last == 'b' || last == 'w' || last == 'l' || last == 'q') &&

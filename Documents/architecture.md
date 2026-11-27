@@ -28,7 +28,7 @@ AsmStudio (C#)                              目标进程（任意程序）
 ```
 +0x0000  stub：VEH 联动记录（savedEsp/Rsp、flag=1、TEB 存锚）→ push 保存寄存器
          → call [data+0]=用户码 → 结果经 VEH 块锚点重载指针后落 [data+8]
-         → 收尾段(epilogueOff)：flag=0 → ExitThread（桩永不 ret）
+         → 崩溃恢复点（VEH 通道 = 锚点重载块起始）→ 落 [data+8] → flag=0 → ExitThread（桩永不 ret）
 +0x0040  data 64B：[+0]=code指针 [+8]=result指针 [+0x10]=ExitThread [+0x18]=callTarget
 +0x0080+ 用户机器码 + 末尾自动补 ret
 ```
@@ -39,6 +39,10 @@ AsmStudio (C#)                              目标进程（任意程序）
   结果落点指针从 VEH 块锚点 `[vehData+0x74]` 绝对寻址重载，不依赖 esp 也不依赖寄存器。
 - **x64 桩以 ExitThread 收尾，永不 ret**；`call [rbx+16]` 内存间接形式实测会崩 → 用寄存器间接。
 - **call 语义走"前奏"**：VEH 通道下 callTarget 拼进 userCode（寄存器赋参+call），>4 参数报 BadArg。
+- **崩溃恢复点放在锚点重载块开头，不是结果落点 `mov [rdi], rax`**：用户码崩溃前可能已毁掉
+  edi/rdi（如空指针写测试顺手 `mov rdi,0`），直接落结果会写错地址，而 handler 已清 flag、
+  第二次 AV 不再拦截，目标进程死。恢复点重定位后 rbx/rdi 先经 `[vehData+0x74]` 重载，
+  栈状态与干净路径一致（handler 置 Rsp=savedRsp-24 / Esp=savedEsp-12）。
 
 ### 会话线程识别（TEB 锚）
 
@@ -68,8 +72,8 @@ handler 入口先比对当前 TEB：**非会话线程的异常一律放行**（�
 1. 入口记录仪（寄存器全部取自 CONTEXT，非 live 值）：code/rip/8 个 GPR/EFlags/AV 访问地址/读写方向
    → data 块诊断槽
 2. 过滤：会话线程（TEB ✓）+ flag==1 + 异常码 ∈ 崩溃类（AV/非法指令/除零/栈溢出/断点…）
-3. OURS 路径：faultCount++、清 flag → `ctx.Eip = [data+0x18]`（桩收尾段）、
-   `ctx.Esp = savedEsp-12`（等效 3 push 仍在栈上）→ CONTINUE_EXECUTION
+3. OURS 路径：faultCount++、清 flag → `ctx.Eip = [data+0x18]`（桩锚点重载/收尾段，
+   重载 rbx/rdi 后落结果）、`ctx.Esp = savedEsp-12`（等效 3 push 仍在栈上）→ CONTINUE_EXECUTION
 4. 线程在收尾段 ExitThread 干净退出 → 宿主 Query 读回 faultCount/现场 → 目标进程存活
 
 ## C# 汇编引擎结构
@@ -82,7 +86,7 @@ Lexer（行切分/注释/数值）
 Assembler（两遍: 首遍定尺寸/标签偏移+前向粘性 rel32；次遍产出字节；
            后向 rel8 溢出自动升级 rel32 重汇编）
 Encoder（REX/前缀/ModRM/SIB/位移/立即数/分支前向后向/moffs/SIB 绝对）
-TestVectors（139 条已知编码对照向量）
+TestVectors（179 条已知编码对照向量，含负向用例）
 ```
 
 ## 测试目标（模拟未知环境）

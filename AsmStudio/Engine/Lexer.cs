@@ -13,6 +13,8 @@ namespace AsmStudio.Engine
         public static string StripComment(string line, SyntaxKind syntax, out int commentCol)
         {
             commentCol = 0;
+            // '#' 注释仅 AT&T（GAS）语义；Intel 侧不识别（该字符在合法 Intel 语法里也不出现）
+            bool hashComment = syntax == SyntaxKind.Att;
             bool inQuote = false, inBracket = false, inParen = false;
             char quote = '\0';
             for (int i = 0; i < line.Length; i++)
@@ -31,7 +33,7 @@ namespace AsmStudio.Engine
                 if (inBracket || inParen) continue;
 
                 bool isComment = false;
-                if (c == ';' || c == '#') isComment = true;
+                if (c == ';' || (hashComment && c == '#')) isComment = true;
                 if (c == '/' && i + 1 < line.Length && line[i + 1] == '/') isComment = true;
 
                 if (isComment)

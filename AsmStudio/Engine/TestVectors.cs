@@ -13,9 +13,15 @@ namespace AsmStudio.Engine
             public readonly ArchKind Arch;
             public readonly string Source;
             public readonly string ExpectedHex;
+            /// <summary>负向向量：期望汇编失败且错误信息含此子串（ExpectedHex 此时留空）</summary>
+            public readonly string ExpectError;
             public Vector(SyntaxKind s, ArchKind a, string src, string hex)
+                : this(s, a, src, hex, null)
             {
-                Syntax = s; Arch = a; Source = src; ExpectedHex = hex;
+            }
+            public Vector(SyntaxKind s, ArchKind a, string src, string hex, string expectError)
+            {
+                Syntax = s; Arch = a; Source = src; ExpectedHex = hex; ExpectError = expectError;
             }
         }
 
@@ -228,6 +234,29 @@ namespace AsmStudio.Engine
             v.Add(new Vector(A, X64, "orl $1, %eax", "83 C8 01"));
             v.Add(new Vector(A, X64, "btq $3, %r11", "49 0F BA E3 03"));
 
+            // ============ 高字节寄存器 + REX 冲突：必须报错而不是静默编错 ============
+            // 有 REX 时编码 4 = spl/bpl/sil/dil，"mov ah,[r8]" 曾被静默编成 41 8A 20 (= mov spl,[r8])
+            v.Add(new Vector(I, X64, "mov ah, byte ptr [r8]", "", "AH/CH/DH/BH"));
+            v.Add(new Vector(I, X64, "mov byte ptr [r12], ah", "", "AH/CH/DH/BH"));
+            v.Add(new Vector(I, X64, "add byte ptr [r9], ah", "", "AH/CH/DH/BH"));
+            v.Add(new Vector(A, X64, "movb %ah, (%r8)", "", "AH/CH/DH/BH"));
+            // 不带 REX 的高字节形式仍要正常编码
+            v.Add(new Vector(I, X64, "mov ah, byte ptr [rax]", "8A 20"));
+            v.Add(new Vector(I, X64, "mov byte ptr [rax], ah", "88 20"));
+
+            // ============ 收敛回归：前向 rel32 + 后向超距跳（补丁会让后续偏移整体 +3）============
+            // 旧的"某遍没有 restart 就算收敛"会拿 restart 那一遍的过期 labels 算前向位移，
+            // 结果 jmp 少跳 3 字节（静默落到错误指令）。现在按字节稳定判定收敛。
+            {
+                System.Text.StringBuilder sb = new System.Text.StringBuilder("jmp end\nlab:\n");
+                for (int i = 0; i < 17; i++) sb.Append("dq 0\n");        // 136 字节，让后向跳超过 rel8
+                sb.Append("jnz lab\nnop\nend: ret");
+                System.Text.StringBuilder hex = new System.Text.StringBuilder("E9 8F 00 00 00 ");
+                for (int i = 0; i < 136; i++) hex.Append("00 ");
+                hex.Append("0F 85 72 FF FF FF 90 C3");
+                v.Add(new Vector(I, X64, sb.ToString(), hex.ToString()));
+            }
+
             return v;
         }
 
@@ -247,15 +276,34 @@ namespace AsmStudio.Engine
                     opt.Arch = v.Arch;
                     opt.BaseAddress = 0;
                     AssembleResult res = Assembler.Assemble(v.Source, opt);
+                    bool expectError = !string.IsNullOrEmpty(v.ExpectError);
                     if (!res.Success)
                     {
-                        r.Passed = false;
-                        r.Error = res.Errors.Count > 0 ? res.Errors[0].ToString() : "unknown error";
+                        string err = res.Errors.Count > 0 ? res.Errors[0].Message : "unknown error";
+                        if (expectError)
+                        {
+                            r.Passed = err.IndexOf(v.ExpectError, StringComparison.Ordinal) >= 0;
+                            r.ExpectedHex = "ERROR: " + v.ExpectError;
+                            r.Error = r.Passed ? null : "unexpected error text: " + err;
+                        }
+                        else
+                        {
+                            r.Passed = false;
+                            r.Error = err;
+                        }
                     }
                     else
                     {
                         string actual = res.Hex;
                         r.ActualHex = actual;
+                        if (expectError)
+                        {
+                            r.Passed = false;
+                            r.ExpectedHex = "ERROR: " + v.ExpectError;
+                            r.Error = "expected an error, but assembly succeeded";
+                            results.Add(r);
+                            continue;
+                        }
                         r.ExpectedHex = v.ExpectedHex;
                         r.Passed = string.Equals(
                             NormalizeHex(actual), NormalizeHex(v.ExpectedHex), StringComparison.Ordinal);

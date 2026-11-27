@@ -45,6 +45,13 @@ namespace AsmStudio.Engine
             // ---- 多遍汇编 ----
             // 关键：labels 字典跨遍保留（第 1 遍收集全部标签，第 2 遍起前向引用可取真实值）。
             bool aborted = false;
+            bool converged = false;
+            /* 收敛判据是"连续两遍产出完全相同"而不是"某遍没有 restart"：
+             * restart 那一遍的 labels 停在 break 点之前（偏移按旧尺寸算），
+             * 下一遍的前向引用会拿到这份过期值——长度仍然稳定、也不触发 restart，
+             * 但 rel32 位移会整整差一个补丁量（静默跳到错误地址）。
+             * 只有字节级稳定才说明尺寸与位移都定了。 */
+            byte[] prevBytes = null;
             for (int pass = 0; pass < MaxPasses; pass++)
             {
                 if (pass == 0) labels.Clear();
@@ -88,11 +95,23 @@ namespace AsmStudio.Engine
                 }
                 if (aborted) break;
                 if (restart) continue;
-                if (pass >= 1) break;       // 第 2 遍起即为稳定输出
+                byte[] cur = code.ToArray();
+                bool stable = prevBytes != null && BytesEqual(prevBytes, cur);
+                prevBytes = cur;
+                if (stable && pass >= 1) { converged = true; break; }
             }
 
             if (aborted)
             {
+                result.Success = false;
+                return result;
+            }
+            /* 轮次用尽仍在 restart：code 是某一遍被 break 截断的半成品，绝不能当成功结果返回
+             * （旧实现会静默产出"少了尾巴"的机器码）。这里明确失败并丢弃字节。 */
+            if (!converged)
+            {
+                errors.Add(new AsmError(0, 0,
+                    "Assembly did not converge after " + MaxPasses + " passes (branch sizing never stabilised); output discarded"));
                 result.Success = false;
                 return result;
             }
@@ -107,6 +126,15 @@ namespace AsmStudio.Engine
             result.Code = code.ToArray();
             foreach (KeyValuePair<string, ulong> kv in labels) result.Labels[kv.Key] = kv.Value;
             return result;
+        }
+
+        /// <summary>两遍输出逐字节相同 = 尺寸与位移都已稳定</summary>
+        private static bool BytesEqual(byte[] a, byte[] b)
+        {
+            if (a == null || b == null || a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++)
+                if (a[i] != b[i]) return false;
+            return true;
         }
 
         /// <summary>解析全部行；任何解析Error都会记录并返回 false。</summary>

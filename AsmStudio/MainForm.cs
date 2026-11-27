@@ -652,7 +652,7 @@ namespace AsmStudio
             if (_schemes.Count == 0) LoadSchemes();
             if (_schemes.Count == 0)
             {
-                MessageBox.Show(this, "No scheme files found (Resources\\\\Schemes\\\\*.asmscheme).", T("Info"),
+                MessageBox.Show(this, "No scheme files found (Resources\\Schemes\\*.asmscheme).", T("Info"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -1254,6 +1254,9 @@ namespace AsmStudio
             if (_session != null)
             {
                 _session.Dispose();
+                if (_session.VehDetachFailed)
+                    Log("[!] VEH uninstall could not be confirmed in the target: "
+                        + "handler page left allocated on purpose (freeing it would crash the target)");
                 _session = null;
             }
             // 内存页：断开后地址全部失效——清空列表与符号（目标可能已退出，不做远程释放）
@@ -1319,6 +1322,14 @@ namespace AsmStudio
                     _session.Symbols.Add(new SymbolInfo { Name = s.Name, Address = s.Address });
                 }
                 cboApis.Items.Add(s.ToString());
+            }
+            // 清空之后回写内存页分配的符号：否则切一次模块下拉，之前分配的 msgText/msgTitle
+            // 等就双双掉出符号表，而 lstMem 列表仍在显示——后续汇编/方案执行会报
+            // undefined symbol，且用户看不出原因（列表与符号表脱钩）。
+            foreach (MemAlloc a in _memAllocs)
+            {
+                _symbolTable.Add(a.Name, a.Addr);
+                _session.Symbols.Add(new SymbolInfo { Name = a.Name, Address = a.Addr });
             }
             Log("[+] " + m.Name + T(" exports: ") + _remoteExports.Count +
                 T(" (select an API to fill the call target)"));

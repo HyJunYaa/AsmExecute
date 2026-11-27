@@ -143,7 +143,7 @@ namespace AsmStudio.Remote
 
                 if (vehData != 0)
                 {
-                    // 告知 VEH handler 崩溃恢复点 = 桩收尾段起始（写 [vehData+0x18]）
+                    // 告知 VEH handler 崩溃恢复点 = 桩锚点重载块/收尾段起始（写 [vehData+0x18]）
                     byte[] resume = new byte[8];
                     ulong resumeRip = (ulong)(remote.ToInt64() + epilogueOff);
                     for (int i = 0; i < 8; i++) resume[i] = (byte)((resumeRip >> (8 * i)) & 0xFF);
@@ -306,6 +306,7 @@ namespace AsmStudio.Remote
             s.Add(0xFF); s.Add(0xD0);                            // call rax
             /* 用户码/被调函数可能毁掉 rbx/rdi/r10，用户码 ret 也会打乱 esp——
              * 一律经 VEH 块锚点（movabs 绝对地址）重载，不依赖 esp/寄存器存活 */
+            int reloadOff = s.Count;   // 锚点重载块起始（VEH 通道的崩溃恢复点，见 epilogueOff 处注释）
             if (vehData != 0)
             {
                 s.AddRange(new byte[] { 0x48, 0xB9 }); AddQ(s, vehData);   // movabs rcx, vehData
@@ -331,9 +332,14 @@ namespace AsmStudio.Remote
                  * 且没做 sub rsp，写的是桩自己/线程初始帧的地盘。
                  * 另外 MS x64 ABI 要求调用方无条件为前 4 个寄存器参数预留 32 字节影子空间，
                  * 被调函数可直接写 [rsp+0x8..0x20]；无栈参数时也不能省，否则会踩坏栈帧。
-                 * 分配量取 16 的倍数：此处 rsp 已是 16 对齐，call 点才能满足 ABI。 */
+                 *
+                 * 对齐：此处 rsp ≡ 8 (mod 16)（线程入口按 0 计，桩 3 次 push 后 ≡ 8，用户码 call/ret 复原），
+                 * 而 ABI 要求 call 点 rsp ≡ 0，所以分配量必须 ≡ 8 (mod 16)。
+                 * 旧实现按 16 的倍数分配 → call 点停在 ≡ 8 → 目标入口 ≡ 0，带 movaps 的函数直接 AV；
+                 * VEH 后奏里那句 "sub rsp,8" 修的是同一个偏差，两条通道必须用同一条规则。 */
                 int stackArgs = nargs > 4 ? nargs - 4 : 0;
-                int totalStackBytes = ((32 + stackArgs * 8) + 15) & ~15;
+                int totalStackBytes = (32 + stackArgs * 8 + 15) & ~15;
+                if ((totalStackBytes & 15) == 0) totalStackBytes += 8;
                 if (totalStackBytes > 0)
                 {
                     s.AddRange(new byte[] { 0x48, 0x81, 0xEC }); AddD(s, (uint)totalStackBytes);   // sub rsp, imm32
@@ -352,7 +358,13 @@ namespace AsmStudio.Remote
                 }
             }
             s.AddRange(new byte[] { 0x48, 0x89, 0x07 });         // mov [rdi], rax
-            epilogueOff = s.Count;                               // 崩溃恢复点：收尾段起始（flag=0 起）
+            /* 崩溃恢复点：VEH 模式取锚点重载块起始（reloadOff），不是 mov [rdi], rax 本身——
+             * 用户码崩溃前可能已毁掉 rdi（非常规约定/任意汇编），直接落点 mov [rdi], rax 会写错地址，
+             * 而 handler 已清 flag，第二次 AV 不再拦截，目标进程死。重定位到重载块后 rbx/rdi 先经
+             * [vehData+0x74] 锚点重载，栈状态与干净路径一致（handler 置 Rsp=savedRsp-24，等效 3 个
+             * push 仍在栈上）；其后的快照段只写 data 块不动寄存器/栈，callTarget 段 VEH 通道恒 0
+             * 不会走（后奏拼在用户码里）。非 VEH 模式无 handler、epilogueOff 不参与工作，保持原位。 */
+            epilogueOff = (vehData != 0) ? reloadOff : s.Count;
             if (vehData != 0)
             {
                 s.AddRange(new byte[] { 0x48, 0xB8 }); AddQ(s, vehData);              // movabs rax, vehData
@@ -403,6 +415,7 @@ namespace AsmStudio.Remote
             /* 用户码/被调函数可能毁掉 ebx/edi（非常规约定，unepic 实测），且用户码
              * 末尾 ret 会弹掉 call 压入的返回地址（esp 位置不可预知）——一律从
              * VEH 块锚点绝对寻址重载，不依赖 esp 也不依赖寄存器存活 */
+            int reloadOff = s.Count;   // 锚点重载块起始（VEH 通道的崩溃恢复点，见 epilogueOff 处注释）
             if (vehData != 0)
             {
                 s.AddRange(new byte[] { 0x8B, 0x1D });                     // mov ebx, [vehData+0x74]
@@ -432,7 +445,14 @@ namespace AsmStudio.Remote
                 }
             }
             s.AddRange(new byte[] { 0x89, 0x07 });               // mov [edi], eax
-            epilogueOff = s.Count;                               // 崩溃恢复点：收尾段起始
+            /* 崩溃恢复点：VEH 模式取锚点重载块起始（reloadOff），不是 mov [edi], eax 本身——
+             * 用户码崩溃前可能已毁掉 edi（如 mov edi,0; mov [edi],1 的空指针写测试），
+             * 直接落点会写错地址，而 handler 已清 flag，第二次 AV 不再拦截，目标进程死。
+             * 重定位到重载块后 ebx/edi 先经 [vehData+0x74] 锚点重载，栈状态与干净路径一致
+             * （handler 置 Esp=savedEsp-12，等效 3 个 push 仍在栈上）；其后的快照段只写
+             * data 块不动寄存器/栈，callTarget 段 VEH 通道恒 0 不会走（后奏拼在用户码里）。
+             * 非 VEH 模式无 handler、epilogueOff 不参与工作，保持原位。 */
+            epilogueOff = (vehData != 0) ? reloadOff : s.Count;
             if (vehData != 0)
             {
                 s.AddRange(new byte[] { 0xC7, 0x05 });           // mov dword [vehData], 0

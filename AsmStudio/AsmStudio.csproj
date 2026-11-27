@@ -118,6 +118,7 @@
     <Compile Include="Remote\RemoteThreadExecutor.cs" />
     <Compile Include="Remote\AsmVeh.cs" />
     <Compile Include="Remote\RemoteSymbols.cs" />
+    <Compile Include="Remote\ProcDiag.cs" />
     <Compile Include="Remote\TargetSession.cs" />
     <Compile Include="Schemes\SchemeFile.cs" />
     <Compile Include="Schemes\SchemeRunner.cs" />
@@ -151,40 +152,16 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <!-- 方案脚本（根目录 Resources\Scheme\），Link 保持输出扁平 exe\Resources\
-         语言资源改为内嵌 resx（Properties\StringResources*.resx），不再用外部 txt -->
-    <Content Include="Resources\Scheme\*.asmscheme">
+    <!-- 方案脚本（Resources\Schemes\），Link 保持输出扁平 exe\Resources\
+         语言资源改为内嵌 resx（Properties\StringResources*.resx），不再用外部 txt
+         用通配符：新增 .asmscheme 自动进输出目录，不必再手工加 Content 项 -->
+    <Content Include="Resources\Schemes\*.asmscheme">
       <Link>Resources\%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Resources\Schemes" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Resources\Schemes\smoke_call_kernel32_x64.asmscheme">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Resources\Schemes\smoke_crash_av_x64.asmscheme">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Resources\Schemes\smoke_intel_x64.asmscheme">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Resources\Schemes\smoke_x86.asmscheme">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\Schemes\smoke_att_x64.asmscheme">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <!-- 无 targeting pack 时框架程序集/mscorlib/norm*.nlp 会误复制到输出目录，构建后清理。

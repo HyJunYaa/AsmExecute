@@ -233,6 +233,13 @@ namespace AsmStudio.Engine
         private void EmitLegacyAndRex(bool w64, int rexR, int rexX, int rexB,
             SegKind seg, bool need66, int repKind, bool useLock)
         {
+            /* AH/CH/DH/BH 与 REX 前缀在同一指令里不可能共存：有 REX 时 8 位寄存器编码 4..7
+             * 被解释成 spl/bpl/sil/dil，ah 会静默变成 spl（"mov ah,[r8]" 实测编出 41 8A 20）。
+             * REX 可能来自另一操作数的 r8-r15，也可能来自内存基址/变址寄存器，
+             * 所以这里必须按"本语句是否含高字节寄存器"统一拦，而不是只看寄存器操作数。 */
+            if (_highByteReg && (w64 || _needRex || rexR != 0 || rexX != 0 || rexB != 0))
+                Fail("AH/CH/DH/BH cannot be encoded in an instruction that needs a REX prefix "
+                    + "(r8-r15 register, SIB base/index, spl/bpl/sil/dil or 64-bit form)");
             if (useLock) Emit(0xF0);
             if (repKind == 1) Emit(0xF3);
             else if (repKind == 2) Emit(0xF2);
@@ -261,7 +268,9 @@ namespace AsmStudio.Engine
 
         // ==================== ModRM/SIB/位移 ====================
 
-        /// <summary>发射寄存器形式的 ModRM（mod=11）。</summary>
+        /// <summary>发射寄存器形式的 ModRM（mod=11）。
+        /// rmRexB 参数在此处不使用：REX.B 统一由调用方在 EmitLegacyAndRex 里发射
+        /// （寄存器高位或内存基址），保留签名只为各调用点传参对称，勿在此重复发射。</summary>
         private void EmitModRmReg(int regField3, Reg rmReg, int rmRexB)
         {
             Emit((byte)(0xC0 | (regField3 << 3) | rmReg.Code));

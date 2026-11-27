@@ -186,11 +186,15 @@ namespace AsmStudio.Remote
             return s;
         }
 
+        /// <summary>VEH handler 未能确认从目标链上摘除（此时页面被故意泄漏，目标不死）</summary>
+        public bool VehDetachFailed;
+
         public void Dispose()
         {
             if (_veh != null)
             {
                 _veh.Dispose();
+                VehDetachFailed = _veh.DetachFailed;
                 _veh = null;
             }
         }
